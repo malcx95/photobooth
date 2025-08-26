@@ -1,0 +1,9 @@
+[package]
+name = "photobooth"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gphoto2 = "3.4.1"
+image = "0.25.6"
+macroquad = "0.4.14"
