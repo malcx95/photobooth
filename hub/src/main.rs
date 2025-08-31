@@ -4,7 +4,7 @@ use macroquad::prelude::*;
 use image::ImageReader;
 
 
-#[macroquad::main("photobooth")]
+#[macroquad::main("photobooth-hub")]
 async fn main() -> Result<(), String>  {
     let context = Context::new().unwrap();
     let camera = context.autodetect_camera().wait().unwrap();
@@ -23,3 +23,4 @@ async fn main() -> Result<(), String>  {
         next_frame().await;
     }
 }
+
