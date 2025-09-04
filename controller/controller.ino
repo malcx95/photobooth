@@ -5,6 +5,7 @@ constexpr const uint8_t TX_START_WORD = 0xEE;
 
 enum RXMessageType : uint8_t
 {
+  CONNECT = 0xDE,
   TURN_ON_LIGHT = 0x42,
 };
 
@@ -16,6 +17,7 @@ struct RXMessage
 
 enum TXMessageType : uint8_t
 {
+  CONNECT_ACK = 0xAE,
   BUTTON_PRESS = 0xBB,
 };
 
@@ -26,6 +28,7 @@ struct TXMessage
 };
 
 static bool read_serial(RXMessage* msg);
+static void send_msg(TXMessage* msg);
 static void clear_serial();
 
 void setup()
@@ -42,22 +45,31 @@ void loop()
   bool read = read_serial(&msg);
   if (read)
   {
-    digitalWrite(13, HIGH);
-    delay(100);
-    digitalWrite(13, LOW);
-    delay(100);
-    digitalWrite(13, HIGH);
-    delay(100);
-    digitalWrite(13, LOW);
+    // digitalWrite(13, HIGH);
+    // delay(10);
+    // digitalWrite(13, LOW);
+    // delay(10);
+    // digitalWrite(13, HIGH);
+    // delay(10);
+    // digitalWrite(13, LOW);
 
     if (msg.type == TURN_ON_LIGHT)
     {
       digitalWrite(13, HIGH);
       delay(1000);
     }
+    else if (msg.type == CONNECT)
+    {
+      TXMessage msg = {CONNECT_ACK, 0};
+      send_msg(&msg);
+      // digitalWrite(13, HIGH);
+      // delay(1000);
+    }
   }
+
   digitalWrite(13, LOW);
   delay(100);
+
 }
 
 static bool read_serial(RXMessage* msg)
@@ -74,7 +86,7 @@ static bool read_serial(RXMessage* msg)
       return false;
     }
 
-    Serial.readBytes(reinterpret_cast<char*>(msg), sizeof(msg));
+    Serial.readBytes(reinterpret_cast<char*>(msg), sizeof(RXMessage));
     clear_serial();
     return true;
   }
@@ -82,6 +94,15 @@ static bool read_serial(RXMessage* msg)
   {
     return false;
   }
+}
+
+static void send_msg(TXMessage* msg)
+{
+  Serial.write(TX_START_WORD);
+  Serial.flush();
+  Serial.write(reinterpret_cast<char*>(msg), sizeof(TXMessage));
+  Serial.flush();
+  clear_serial();
 }
 
 static void clear_serial()

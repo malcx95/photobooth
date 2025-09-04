@@ -1,0 +1,2 @@
+default_fqbn: teensy:avr:teensyLC
+default_port: usb/3-1
