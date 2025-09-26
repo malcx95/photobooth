@@ -34,23 +34,29 @@ static void clear_serial();
 void setup()
 {
   Serial.begin(9600);
-  // put your setup code here, to run once:
   pinMode(13, OUTPUT);
 }
 
 void loop()
 {
-  // put your main code here, to run repeatedly:
+  if (Serial.available() > 0)
+  {
+    digitalWrite(13, HIGH);
+    delay(100);
+    digitalWrite(13, LOW);
+    delay(100);
+    digitalWrite(13, HIGH);
+  }
   RXMessage msg;
   bool read = read_serial(&msg);
   if (read)
   {
     // digitalWrite(13, HIGH);
-    // delay(10);
+    // delay(100);
     // digitalWrite(13, LOW);
     // delay(10);
     // digitalWrite(13, HIGH);
-    // delay(10);
+    // delay(100);
     // digitalWrite(13, LOW);
 
     if (msg.type == TURN_ON_LIGHT)
@@ -62,8 +68,12 @@ void loop()
     {
       TXMessage msg = {CONNECT_ACK, 0};
       send_msg(&msg);
-      // digitalWrite(13, HIGH);
-      // delay(1000);
+      digitalWrite(13, HIGH);
+      delay(1000);
+    }
+    else
+    {
+      Serial.flush();
     }
   }
 
@@ -77,7 +87,7 @@ static bool read_serial(RXMessage* msg)
   if (Serial.available() >= 3)
   {
     bool found = false;
-    while (!found && Serial.available() > 3)
+    while (!found/* && Serial.available() > 3*/)
     {
       found = Serial.read() == RX_START_WORD;
     }

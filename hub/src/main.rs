@@ -3,7 +3,7 @@ use gphoto2::camera::Camera;
 use serialport::{SerialPort, SerialPortInfo};
 use core::panic;
 use std::io::Cursor;
-use std::time::Duration;
+use std::time::{self, Duration};
 use macroquad::prelude::*;
 use image::ImageReader;
 
@@ -16,6 +16,8 @@ const CONNECT_MSG_TYPE: u8 = 0xDE;
 const CONNECT_ACK_MSG_TYPE: u8 = 0xAE;
 
 const TURN_ON_LIGHT_MSG_TYPE: u8 = 0x4A;
+
+const MSG_TIMEOUT: u128 = 200;
 
 enum TXMessage {
     Connect,
@@ -43,7 +45,7 @@ fn find_port() -> Box<dyn SerialPort> {
     let ports = serialport::available_ports().expect("No serial ports found!");
     for p in ports {
         let mut port = match serialport::new(&p.port_name, CONTROLLER_BAUD_RATE)
-            .timeout(Duration::from_millis(500))
+            .timeout(Duration::from_millis(1500))
             .open() {
             Ok(opened) => opened,
             Err(_) => continue,
@@ -51,10 +53,10 @@ fn find_port() -> Box<dyn SerialPort> {
 
         println!("Trying port {}", &p.port_name);
 
-        let connect_msg = [HUB_START_WORD, CONNECT_MSG_TYPE, 0];
+        let connect_msg = [1, 1, 1, HUB_START_WORD, CONNECT_MSG_TYPE, 0];
         port.write(&connect_msg).expect("Write failed!");
+        println!("This port might respond");
 
-        println!("This port seems to respond");
         let mut serial_buf = [0; 3];
         let read_bytes = match port.read_exact(serial_buf.as_mut_slice()) {
             Ok(b) => b,
