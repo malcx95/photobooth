@@ -3,6 +3,13 @@
 constexpr const uint8_t RX_START_WORD = 0x41;
 constexpr const uint8_t TX_START_WORD = 0xEE;
 
+enum class Button : uint8_t
+{
+  LEFT = 6,
+  TAKE_PHOTO = 5,
+  RIGHT = 4,
+};
+
 enum RXMessageType : uint8_t
 {
   CONNECT = 0xDE,
@@ -27,30 +34,68 @@ struct TXMessage
   uint8_t payload;
 };
 
+struct ButtonState
+{
+  Button button;
+  bool pressed;
+  bool prev_pressed;
+
+  void setup()
+  {
+    pinMode((uint8_t)button, INPUT_PULLUP);
+  }
+
+  bool read_state()
+  {
+    return pressed && !prev_pressed;
+  }
+
+  void update_state()
+  {
+    prev_pressed = pressed;
+    pressed = digitalRead((uint8_t)button) == LOW;
+  }
+};
+
+ButtonState buttons[]
+{
+  {Button::LEFT, false, false},
+  {Button::TAKE_PHOTO, false, false},
+  {Button::RIGHT, false, false},
+};
+
+const size_t NUM_BUTTONS = 3;
+
 static bool read_serial(RXMessage* msg);
 static void send_msg(TXMessage* msg);
 static void clear_serial();
+static void setup_buttons();
+static void update_buttons();
 
 void setup()
 {
   Serial.begin(9600);
   pinMode(13, OUTPUT);
+  setup_buttons();
 }
 
 void loop()
 {
-  if (Serial.available() > 0)
-  {
-    digitalWrite(13, HIGH);
-    delay(100);
-    digitalWrite(13, LOW);
-    delay(100);
-    digitalWrite(13, HIGH);
-  }
+  update_buttons();
+
+  // if (Serial.available() > 0)
+  // {
+  //   digitalWrite(13, HIGH);
+  //   delay(100);
+  //   digitalWrite(13, LOW);
+  //   delay(100);
+  //   digitalWrite(13, HIGH);
+  // }
   RXMessage msg;
   bool read = read_serial(&msg);
   if (read)
   {
+
     // digitalWrite(13, HIGH);
     // delay(100);
     // digitalWrite(13, LOW);
@@ -66,7 +111,7 @@ void loop()
     }
     else if (msg.type == CONNECT)
     {
-      TXMessage msg = {CONNECT_ACK, 0};
+      TXMessage msg{CONNECT_ACK, 0};
       send_msg(&msg);
       digitalWrite(13, HIGH);
       delay(1000);
@@ -77,9 +122,18 @@ void loop()
     }
   }
 
+  for (size_t i = 0; i < NUM_BUTTONS; ++i)
+  {
+    ButtonState state = buttons[i];
+    if (state.read_state())
+    {
+      TXMessage msg{BUTTON_PRESS, (uint8_t)state.button};
+      send_msg(&msg);
+    }
+  }
+
   digitalWrite(13, LOW);
   delay(100);
-
 }
 
 static bool read_serial(RXMessage* msg)
@@ -120,5 +174,21 @@ static void clear_serial()
   while (Serial.available() > 0)
   {
     Serial.read();
+  }
+}
+
+static void setup_buttons()
+{
+  for (size_t i = 0; i < NUM_BUTTONS; ++i)
+  {
+    buttons[i].setup();
+  }
+}
+
+static void update_buttons()
+{
+  for (size_t i = 0; i < NUM_BUTTONS; ++i)
+  {
+    buttons[i].update_state();
   }
 }

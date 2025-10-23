@@ -14,16 +14,18 @@ const CONTROLLER_BAUD_RATE: u32 = 9600;
 
 const CONNECT_MSG_TYPE: u8 = 0xDE;
 const CONNECT_ACK_MSG_TYPE: u8 = 0xAE;
+const BUTTON_PRESS_MSG_TYPE: u8 = 0xBB;
 
 const TURN_ON_LIGHT_MSG_TYPE: u8 = 0x4A;
 
-const MSG_TIMEOUT: u128 = 200;
+const MSG_TIMEOUT: u64 = 200;
 
 enum TXMessage {
     Connect,
 }
 
 enum RXMessage {
+    Nothing,
     ButtonPress(u8)
 }
 
@@ -32,12 +34,41 @@ async fn main() -> Result<(), String>  {
     let context = Context::new().expect("Failed to create a context!");
     let camera = context.autodetect_camera().wait().expect("Found no camera!");
 
-    let port = find_port();
+    let mut port = find_port();
 
     loop {
+        match read_serial(&mut port) {
+            RXMessage::Nothing => {},
+            RXMessage::ButtonPress(button) => {
+                println!("Pressed button {}", button);
+            }
+        }
         preview_camera(&camera, &context);
         next_frame().await;
     }
+}
+
+
+fn read_serial(port: &mut Box<dyn SerialPort>) -> RXMessage {
+    if port.bytes_to_read().unwrap() < 3 {
+        return RXMessage::Nothing;
+    }
+
+    let mut serial_buf = [0; 3];
+    let read_bytes = match port.read_exact(serial_buf.as_mut_slice()) {
+        Ok(b) => b,
+        Err(_) => {
+            println!("Failed to read message");
+            return RXMessage::Nothing;
+        }
+    };
+
+    if serial_buf[0] == CONTROLLER_START_WORD {
+        if serial_buf[1] == BUTTON_PRESS_MSG_TYPE {
+            return RXMessage::ButtonPress(serial_buf[2]);
+        }
+    }
+    RXMessage::Nothing
 }
 
 
@@ -45,7 +76,7 @@ fn find_port() -> Box<dyn SerialPort> {
     let ports = serialport::available_ports().expect("No serial ports found!");
     for p in ports {
         let mut port = match serialport::new(&p.port_name, CONTROLLER_BAUD_RATE)
-            .timeout(Duration::from_millis(1500))
+            .timeout(Duration::from_millis(MSG_TIMEOUT))
             .open() {
             Ok(opened) => opened,
             Err(_) => continue,
