@@ -5,9 +5,9 @@ constexpr const uint8_t TX_START_WORD = 0xEE;
 
 enum class Button : uint8_t
 {
-  LEFT = 6,
+  ACCEPT = 6,
   TAKE_PHOTO = 5,
-  RIGHT = 4,
+  REJECT = 4,
 };
 
 enum RXMessageType : uint8_t
@@ -59,9 +59,9 @@ struct ButtonState
 
 ButtonState buttons[]
 {
-  {Button::LEFT, false, false},
+  {Button::ACCEPT, false, false},
   {Button::TAKE_PHOTO, false, false},
-  {Button::RIGHT, false, false},
+  {Button::REJECT, false, false},
 };
 
 const size_t NUM_BUTTONS = 3;
@@ -75,7 +75,7 @@ static void update_buttons();
 void setup()
 {
   Serial.begin(9600);
-  pinMode(13, OUTPUT);
+  pinMode(LED_BUILTIN, OUTPUT);
   setup_buttons();
 }
 
@@ -85,24 +85,24 @@ void loop()
 
   // if (Serial.available() > 0)
   // {
-  //   digitalWrite(13, HIGH);
+  //   digitalWrite(LED_BUILTIN, HIGH);
   //   delay(100);
-  //   digitalWrite(13, LOW);
+  //   digitalWrite(LED_BUILTIN, LOW);
   //   delay(100);
-  //   digitalWrite(13, HIGH);
+  //   digitalWrite(LED_BUILTIN, HIGH);
   // }
   RXMessage msg;
   bool read = read_serial(&msg);
   if (read)
   {
 
-    // digitalWrite(13, HIGH);
+    // digitalWrite(LED_BUILTIN, HIGH);
     // delay(100);
-    // digitalWrite(13, LOW);
+    // digitalWrite(LED_BUILTIN, LOW);
     // delay(10);
-    // digitalWrite(13, HIGH);
+    // digitalWrite(LED_BUILTIN, HIGH);
     // delay(100);
-    // digitalWrite(13, LOW);
+    // digitalWrite(LED_BUILTIN, LOW);
 
     if (msg.type == TURN_ON_LIGHT)
     {
