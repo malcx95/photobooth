@@ -130,7 +130,7 @@ async fn main() -> Result<(), String>  {
                 }
             },
             ProgramState::Capturing => {
-                let capture_response = image_rx.try_recv();
+                let capture_response = image_rx.recv_timeout(Duration::from_millis(1000));
                 match capture_response {
                     Ok(ImageMessage::Captured(path)) => {
                         camera_tx.send(CameraCommand::FetchImage(path)).unwrap();
@@ -147,8 +147,7 @@ async fn main() -> Result<(), String>  {
             },
             ProgramState::FetchingImage => {
                 println!("Waiting for image...");
-                let fetch_response = image_rx.try_recv();
-                println!("Got image");
+                let fetch_response = image_rx.recv_timeout(Duration::from_millis(1000));
                 match fetch_response {
                     Ok(ImageMessage::FetchedImage(image, path)) => {
                         println!("Got image");
@@ -170,6 +169,16 @@ async fn main() -> Result<(), String>  {
                 draw_captured_image(&last_captured_image, IMAGE_HEIGHT, IMAGE_WIDTH);
                 draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &state);
                 draw_review_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
+
+                match button_press {
+                    Some(ButtonPress::Accept) => {
+                        state = ProgramState::Preview;
+                    }
+                    Some(ButtonPress::Reject) => {
+                        state = ProgramState::Preview;
+                    },
+                    _ => { },
+                }
             },
         }
         next_frame().await;
@@ -345,8 +354,8 @@ fn draw_loading_frame(image_height: f32, image_width: f32) {
 }
 
 fn draw_review_frame(image_height: f32, image_width: f32) {
-    // let font_size = 400.0;
+    let font_size = 400.0;
 
-    // let center = get_text_center("Loading...", Option::None, font_size as u16, 1.0, 0.0);
-    // draw_text("Loading...", image_width / 2.0 - center.x / 2.0, image_height / 2.0 - center.y / 2.0, font_size, YELLOW);
+    let center = get_text_center("OK?", Option::None, font_size as u16, 1.0, 0.0);
+    draw_text("OK?", image_width / 2.0 - center.x / 2.0, image_height / 2.0 - center.y / 2.0, font_size, YELLOW);
 }

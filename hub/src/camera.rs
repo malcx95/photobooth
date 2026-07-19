@@ -23,11 +23,6 @@ pub enum CameraCommand {
     DeleteImage(CameraFilePath),
 }
 
-// enum State {
-//     Idle,
-//     Previewing,
-// }
-
 pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCommand>) {
     let context = Context::new().expect("Failed to create a context!");
     let camera: Camera;
@@ -42,13 +37,13 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
     }
 
     let config = camera.config().wait().unwrap();
-    let image_quality = config.get_child_by_id(27).unwrap();
-    let setting = match image_quality {
-        gphoto2::widget::Widget::Radio(radio_widget) => radio_widget,
-        _ => panic!("Missing setting image quality"),
-    };
-    // setting.set_choice("Fine").unwrap(); // THIS ALMOST WORKS
-    camera.set_config(&setting);
+    let image_quality = camera.config_key::<RadioWidget>("imagequality").wait().unwrap();
+    image_quality.set_choice("Fine").unwrap();
+    camera.set_config(&image_quality).wait().unwrap();
+
+    let shutter_speed = camera.config_key::<RadioWidget>("shutterspeed").wait().unwrap();;
+    shutter_speed.set_choice("1/10").unwrap();
+    camera.set_config(&shutter_speed).wait().unwrap();
 
     println!("{:#?}", config);
     image_tx.send(ImageMessage::CameraStarted).unwrap();
@@ -100,7 +95,6 @@ fn capture_image(camera: &Camera) -> Option<CameraFilePath> {
 }
 
 fn fetch_image(camera: &Camera, camera_context: &Context, file: &CameraFilePath) -> Option<RgbaImage> {
-    println!("Got here");
     let camera_file = camera
         .fs()
         .download(&file.folder(), &file.name())
@@ -110,6 +104,7 @@ fn fetch_image(camera: &Camera, camera_context: &Context, file: &CameraFilePath)
     let data = camera_file.get_data(&camera_context).wait().ok()?;
 
     let decoded = ImageReader::with_format(Cursor::new(data), image::ImageFormat::Jpeg).decode().ok()?;
+
     let converted = decoded.clone().into_rgba8();
 
     Some(converted)
