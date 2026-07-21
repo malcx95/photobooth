@@ -4,21 +4,26 @@ use gphoto2::Context;
 use gphoto2::camera::Camera;
 use gphoto2::file::CameraFilePath;
 use gphoto2::widget::Widget;
+use image::EncodableLayout;
+use image::buffer::ConvertBuffer;
 use serialport::{SerialPort, SerialPortInfo};
 use core::panic;
 use std::f32::consts::PI;
+use std::fs::File;
+use std::io::prelude::*;
 use std::io::Cursor;
 use std::path::Path;
 use std::thread;
 use std::time::{self, Duration, Instant};
 use macroquad::prelude::*;
-use image::{DynamicImage, ImageReader, RgbaImage};
+use image::{DynamicImage, ImageReader, RgbaImage, ImageEncoder};
 use std::sync::mpsc;
 
 use crate::camera::{CameraCommand, ImageMessage};
 
 const CONTROLLER_START_WORD: u8 = 0xEE;
 const HUB_START_WORD: u8 = 0x41;
+const IMAGE_SAVE_DIRECTORY: &str = "/home/malcolm/photoboothimages";
 
 const CONTROLLER_BAUD_RATE: u32 = 9600;
 
@@ -90,6 +95,11 @@ async fn main() -> Result<(), String>  {
     camera_tx.send(CameraCommand::CapturePreview).unwrap();
     let mut curr_preview_image = RgbaImage::new(1000, 1000);
     let mut last_captured_image = RgbaImage::new(1000, 1000);
+    // Textures must outlive the frame in which they are drawn. Macroquad queues
+    // draw calls until `next_frame`, so creating one inside a draw function can
+    // leave the renderer with a texture that has already been released.
+    let mut preview_texture = DisplayTexture::new(&curr_preview_image);
+    let mut captured_texture = DisplayTexture::new(&last_captured_image);
     let mut last_captured_path: CameraFilePath;
 
     loop {
@@ -101,6 +111,7 @@ async fn main() -> Result<(), String>  {
                 match preview_response {
                     Ok(ImageMessage::ImagePreview(image)) => {
                         curr_preview_image = image;
+                        preview_texture.update(&curr_preview_image);
                     },
                     _ => { }
                 };
@@ -115,11 +126,11 @@ async fn main() -> Result<(), String>  {
                     },
                 }
 
-                draw_preview(&curr_preview_image, IMAGE_HEIGHT, IMAGE_WIDTH);
+                draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &state);
             },
             ProgramState::Countdown => {
-                draw_preview(&curr_preview_image, IMAGE_HEIGHT, IMAGE_WIDTH);
+                draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 let secs_left = 3.0 - countdown_start.elapsed().as_secs_f32();
                 if secs_left <= 0.0 {
                     state = ProgramState::Capturing;
@@ -142,16 +153,17 @@ async fn main() -> Result<(), String>  {
                     },
                     _ => { }
                 };
-                draw_preview(&curr_preview_image, IMAGE_HEIGHT, IMAGE_WIDTH);
+                draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 draw_cheese_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
             },
             ProgramState::FetchingImage => {
                 println!("Waiting for image...");
-                let fetch_response = image_rx.recv_timeout(Duration::from_millis(1000));
+                let fetch_response = image_rx.try_recv();//.recv_timeout(Duration::from_millis(2000));
                 match fetch_response {
                     Ok(ImageMessage::FetchedImage(image, path)) => {
                         println!("Got image");
                         last_captured_image = image;
+                        captured_texture.update(&last_captured_image);
                         last_captured_path = path;
                         state = ProgramState::Review;
                     },
@@ -161,18 +173,19 @@ async fn main() -> Result<(), String>  {
                     },
                     _ => { }
                 };
-                draw_preview(&curr_preview_image, IMAGE_HEIGHT, IMAGE_WIDTH);
+                draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 draw_loading_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
             },
             ProgramState::Review => {
                 // state = ProgramState::Preview;
-                draw_captured_image(&last_captured_image, IMAGE_HEIGHT, IMAGE_WIDTH);
+                draw_image(&captured_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &state);
                 draw_review_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
 
                 match button_press {
                     Some(ButtonPress::Accept) => {
                         state = ProgramState::Preview;
+                        save_image(&last_captured_image);
                     }
                     Some(ButtonPress::Reject) => {
                         state = ProgramState::Preview;
@@ -182,6 +195,31 @@ async fn main() -> Result<(), String>  {
             },
         }
         next_frame().await;
+    }
+}
+
+
+fn save_image(image: &RgbaImage) {
+    println!("Saving image");
+    if let Err(error) = std::fs::create_dir_all(IMAGE_SAVE_DIRECTORY) {
+        eprintln!("Failed to create image directory {IMAGE_SAVE_DIRECTORY}: {error}");
+        return;
+    }
+
+    println!("Saving image 2");
+    let mut image_number = 1;
+    let image_path = loop {
+        let path = Path::new(IMAGE_SAVE_DIRECTORY).join(format!("{image_number:04}.jpg"));
+        if !path.exists() {
+            break path;
+        }
+        image_number += 1;
+    };
+
+    println!("Saving image 3");
+    let jpeg_image = DynamicImage::ImageRgba8(image.clone()).to_rgb8();
+    if let Err(error) = jpeg_image.save_with_format(&image_path, image::ImageFormat::Jpeg) {
+        eprintln!("Failed to save image to {}: {error}", image_path.display());
     }
 }
 
@@ -321,23 +359,37 @@ fn draw_buttons(image_height: f32, image_width: f32, program_state: &ProgramStat
 // }
 
 
-fn draw_captured_image(image: &RgbaImage, target_height: f32, target_width: f32) -> (f32, f32) {
-    let width = image.width() as f32;
-    let height = image.height() as f32;
-    let texture = Texture2D::from_rgba8(width as u16, height as u16, &image);
-
-    draw_texture_ex(&texture, 0., 0., WHITE, DrawTextureParams { dest_size: Some(vec2(target_width, target_height)), ..Default::default() });
-
-    (height as f32, width as f32)
+struct DisplayTexture {
+    texture: Texture2D,
+    width: u32,
+    height: u32,
 }
 
+impl DisplayTexture {
+    fn new(image: &RgbaImage) -> Self {
+        let width = u16::try_from(image.width()).expect("Image width exceeds Macroquad's texture limit");
+        let height = u16::try_from(image.height()).expect("Image height exceeds Macroquad's texture limit");
 
-fn draw_preview(image: &RgbaImage, target_height: f32, target_width: f32) {
-    let width = image.width() as u16;
-    let height = image.height() as u16;
-    let texture = Texture2D::from_rgba8(width, height, &image);
+        Self {
+            texture: Texture2D::from_rgba8(width, height, image.as_raw()),
+            width: image.width(),
+            height: image.height(),
+        }
+    }
 
-    draw_texture_ex(&texture, 0., 0., WHITE, DrawTextureParams { dest_size: Some(vec2(target_width, target_height)), ..Default::default() });
+    fn update(&mut self, image: &RgbaImage) {
+        if self.width != image.width() || self.height != image.height() {
+            *self = Self::new(image);
+        } else {
+            self.texture
+                .update_from_bytes(self.width, self.height, image.as_raw());
+        }
+    }
+}
+
+fn draw_image(texture: &Texture2D, target_height: f32, target_width: f32) {
+
+    draw_texture_ex(texture, 0., 0., WHITE, DrawTextureParams { dest_size: Some(vec2(target_width, target_height)), ..Default::default() });
 }
 
 fn draw_cheese_frame(image_height: f32, image_width: f32) {

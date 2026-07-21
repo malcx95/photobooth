@@ -1,5 +1,7 @@
 use core::panic;
-use std::{io::Cursor, path::Path, sync::mpsc::{Receiver, Sender}};
+use std::{
+    io::Cursor, path::PathBuf, sync::mpsc::{Receiver, Sender}, thread::sleep, time::{Duration, SystemTime, UNIX_EPOCH}
+};
 use gphoto2::{camera::Camera, file::CameraFilePath, widget::RadioWidget};
 use gphoto2::Context;
 use macroquad::prelude::*;
@@ -41,9 +43,9 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
     image_quality.set_choice("Fine").unwrap();
     camera.set_config(&image_quality).wait().unwrap();
 
-    let shutter_speed = camera.config_key::<RadioWidget>("shutterspeed").wait().unwrap();;
-    shutter_speed.set_choice("1/10").unwrap();
-    camera.set_config(&shutter_speed).wait().unwrap();
+    // let shutter_speed = camera.config_key::<RadioWidget>("shutterspeed").wait().unwrap();;
+    // shutter_speed.set_choice("1/10").unwrap();
+    // camera.set_config(&shutter_speed).wait().unwrap();
 
     println!("{:#?}", config);
     image_tx.send(ImageMessage::CameraStarted).unwrap();
@@ -65,7 +67,8 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
                 image_tx.send(msg).unwrap();
             },
             Some(CameraCommand::FetchImage(path)) => {
-                let msg = fetch_image(&camera, &context, &path).map_or(
+                sleep(Duration::from_secs(1));
+                let msg = fetch_image(&camera, &path).map_or(
                     ImageMessage::FetchFailed,
                     |image| { ImageMessage::FetchedImage(image, path) });
                 println!("Sending image");
@@ -94,18 +97,29 @@ fn capture_image(camera: &Camera) -> Option<CameraFilePath> {
     camera.capture_image().wait().ok()
 }
 
-fn fetch_image(camera: &Camera, camera_context: &Context, file: &CameraFilePath) -> Option<RgbaImage> {
+fn fetch_image(camera: &Camera, file: &CameraFilePath) -> Option<RgbaImage> {
+    let download_path = capture_download_path();
     let camera_file = camera
         .fs()
-        .download(&file.folder(), &file.name())
+        .download_to(&file.folder(), &file.name(), &download_path)
         .wait()
         .ok()?;
 
-    let data = camera_file.get_data(&camera_context).wait().ok()?;
-
-    let decoded = ImageReader::with_format(Cursor::new(data), image::ImageFormat::Jpeg).decode().ok()?;
-
-    let converted = decoded.clone().into_rgba8();
+    let decoded = ImageReader::open(&download_path).ok()?.decode().ok()?;
+    let converted = decoded.into_rgba8();
+    drop(camera_file);
+    if let Err(error) = std::fs::remove_file(&download_path) {
+        eprintln!("Failed to remove temporary image {}: {error}", download_path.display());
+    }
 
     Some(converted)
+}
+
+fn capture_download_path() -> PathBuf {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("System clock is before the Unix epoch")
+        .as_nanos();
+
+    std::env::temp_dir().join(format!("photobooth-capture-{}-{timestamp}.jpg", std::process::id()))
 }
