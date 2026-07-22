@@ -1,23 +1,24 @@
 mod camera;
 
+use core::panic;
 use gphoto2::Context;
 use gphoto2::camera::Camera;
 use gphoto2::file::CameraFilePath;
 use gphoto2::widget::Widget;
 use image::EncodableLayout;
 use image::buffer::ConvertBuffer;
+use image::{DynamicImage, ImageEncoder, ImageReader, RgbaImage};
+use macroquad::prelude::*;
 use serialport::{SerialPort, SerialPortInfo};
-use core::panic;
 use std::f32::consts::PI;
+use std::fmt::write;
 use std::fs::File;
-use std::io::prelude::*;
 use std::io::Cursor;
+use std::io::prelude::*;
 use std::path::Path;
+use std::sync::mpsc;
 use std::thread;
 use std::time::{self, Duration, Instant};
-use macroquad::prelude::*;
-use image::{DynamicImage, ImageReader, RgbaImage, ImageEncoder};
-use std::sync::mpsc;
 
 use crate::camera::{CameraCommand, ImageMessage};
 
@@ -48,13 +49,13 @@ enum TXMessage {
 
 enum RXMessage {
     Nothing,
-    ButtonPress(u8)
+    ButtonPress(u8),
 }
 
 enum ButtonPress {
     TakePhoto,
     Accept,
-    Reject
+    Reject,
 }
 
 enum ProgramState {
@@ -62,11 +63,11 @@ enum ProgramState {
     Countdown,
     Capturing,
     FetchingImage,
-    Review
+    Review,
 }
 
 #[macroquad::main("photobooth-hub")]
-async fn main() -> Result<(), String>  {
+async fn main() -> Result<(), String> {
     let (image_tx, image_rx) = mpsc::channel::<camera::ImageMessage>();
     let (camera_tx, camera_rx) = mpsc::channel::<camera::CameraCommand>();
 
@@ -75,7 +76,6 @@ async fn main() -> Result<(), String>  {
     });
 
     let mut port = find_port();
-
 
     println!("Connecting to camera...");
     match image_rx.recv().unwrap() {
@@ -107,13 +107,13 @@ async fn main() -> Result<(), String>  {
 
         match state {
             ProgramState::Preview => {
-                let preview_response = image_rx.recv_timeout(Duration::from_millis(300));
+                let preview_response = image_rx.recv_timeout(Duration::from_millis(100));
                 match preview_response {
                     Ok(ImageMessage::ImagePreview(image)) => {
                         curr_preview_image = image;
                         preview_texture.update(&curr_preview_image);
-                    },
-                    _ => { }
+                    }
+                    _ => {}
                 };
 
                 match button_press {
@@ -123,42 +123,50 @@ async fn main() -> Result<(), String>  {
                     }
                     _ => {
                         camera_tx.send(CameraCommand::CapturePreview).unwrap();
-                    },
+                    }
                 }
 
                 draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &state);
-            },
+            }
             ProgramState::Countdown => {
+                camera_tx.send(CameraCommand::CapturePreview).unwrap();
+                let preview_response = image_rx.recv_timeout(Duration::from_millis(100));
+                match preview_response {
+                    Ok(ImageMessage::ImagePreview(image)) => {
+                        curr_preview_image = image;
+                        preview_texture.update(&curr_preview_image);
+                    }
+                    _ => {}
+                };
                 draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 let secs_left = 3.0 - countdown_start.elapsed().as_secs_f32();
                 if secs_left <= 0.0 {
                     state = ProgramState::Capturing;
                     camera_tx.send(CameraCommand::CaptureImage).unwrap();
-                }
-                else {
+                } else {
                     draw_countdown(secs_left, IMAGE_HEIGHT, IMAGE_WIDTH);
                 }
-            },
+            }
             ProgramState::Capturing => {
-                let capture_response = image_rx.recv_timeout(Duration::from_millis(1000));
+                let capture_response = image_rx.try_recv();
                 match capture_response {
                     Ok(ImageMessage::Captured(path)) => {
                         camera_tx.send(CameraCommand::FetchImage(path)).unwrap();
                         state = ProgramState::FetchingImage;
-                    },
+                    }
                     Ok(ImageMessage::CaptureFailed) => {
                         println!("Failed to capture image");
                         state = ProgramState::Preview;
-                    },
-                    _ => { }
+                    }
+                    _ => {}
                 };
                 draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 draw_cheese_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
-            },
+            }
             ProgramState::FetchingImage => {
                 println!("Waiting for image...");
-                let fetch_response = image_rx.try_recv();//.recv_timeout(Duration::from_millis(2000));
+                let fetch_response = image_rx.try_recv(); //.recv_timeout(Duration::from_millis(2000));
                 match fetch_response {
                     Ok(ImageMessage::FetchedImage(image, path)) => {
                         println!("Got image");
@@ -166,16 +174,16 @@ async fn main() -> Result<(), String>  {
                         captured_texture.update(&last_captured_image);
                         last_captured_path = path;
                         state = ProgramState::Review;
-                    },
+                    }
                     Ok(ImageMessage::FetchFailed) => {
-                        println!("Failed to capture image");
+                        println!("Failed to fetch image");
                         state = ProgramState::Preview;
-                    },
-                    _ => { }
+                    }
+                    _ => {}
                 };
                 draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 draw_loading_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
-            },
+            }
             ProgramState::Review => {
                 // state = ProgramState::Preview;
                 draw_image(&captured_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
@@ -189,15 +197,14 @@ async fn main() -> Result<(), String>  {
                     }
                     Some(ButtonPress::Reject) => {
                         state = ProgramState::Preview;
-                    },
-                    _ => { },
+                    }
+                    _ => {}
                 }
-            },
+            }
         }
         next_frame().await;
     }
 }
-
 
 fn save_image(image: &RgbaImage) {
     println!("Saving image");
@@ -223,7 +230,6 @@ fn save_image(image: &RgbaImage) {
     }
 }
 
-
 fn read_buttons(port: &mut Box<dyn SerialPort>) -> Option<ButtonPress> {
     let press_opt = match read_serial(port) {
         RXMessage::Nothing => None,
@@ -232,8 +238,7 @@ fn read_buttons(port: &mut Box<dyn SerialPort>) -> Option<ButtonPress> {
                 Some(ButtonPress::Accept)
             } else if button == TAKE_PHOTO_BUTTON_PIN {
                 Some(ButtonPress::TakePhoto)
-            }
-            else {
+            } else {
                 Some(ButtonPress::Reject)
             }
         }
@@ -254,7 +259,6 @@ fn read_buttons(port: &mut Box<dyn SerialPort>) -> Option<ButtonPress> {
         }
     }
 }
-
 
 fn read_serial(port: &mut Box<dyn SerialPort>) -> RXMessage {
     if port.bytes_to_read().unwrap() < 3 {
@@ -278,13 +282,13 @@ fn read_serial(port: &mut Box<dyn SerialPort>) -> RXMessage {
     RXMessage::Nothing
 }
 
-
 fn find_port() -> Box<dyn SerialPort> {
     let ports = serialport::available_ports().expect("No serial ports found!");
     for p in ports {
         let mut port = match serialport::new(&p.port_name, CONTROLLER_BAUD_RATE)
             .timeout(Duration::from_millis(MSG_TIMEOUT))
-            .open() {
+            .open()
+        {
             Ok(opened) => opened,
             Err(_) => continue,
         };
@@ -307,11 +311,9 @@ fn find_port() -> Box<dyn SerialPort> {
         if serial_buf[1] == CONNECT_ACK_MSG_TYPE {
             return port;
         }
-
     }
     panic!("Found no ports!");
 }
-
 
 fn draw_countdown(count: f32, image_height: f32, image_width: f32) {
     let count_digit = count.ceil() as i32;
@@ -320,9 +322,14 @@ fn draw_countdown(count: f32, image_height: f32, image_width: f32) {
     let font_size = 260.0 * (count % 1.0 + 0.3);
 
     let center = get_text_center(&digit_str, Option::None, font_size as u16, 1.0, 0.0);
-    draw_text(&digit_str, image_width / 2.0 - center.x / 2.0, image_height / 2.0 - center.y / 2.0, font_size, YELLOW);
+    draw_text(
+        &digit_str,
+        image_width / 2.0 - center.x / 2.0,
+        image_height / 2.0 - center.y / 2.0,
+        font_size,
+        YELLOW,
+    );
 }
-
 
 fn draw_buttons(image_height: f32, image_width: f32, program_state: &ProgramState) {
     let button_x = image_width + 100.0;
@@ -332,23 +339,26 @@ fn draw_buttons(image_height: f32, image_width: f32, program_state: &ProgramStat
     let font_size = 40.0;
 
     let mut buttons = match program_state {
-        ProgramState::Review => vec![
-            ("Accept", GREEN),
-            ("Reject", RED),
-        ],
-        _ => vec![
-            ("Capture", WHITE),
-            ("Accept", GREEN),
-            ("Reject", RED),
-        ]
+        ProgramState::Review => vec![("Accept", GREEN), ("Reject", RED)],
+        _ => vec![("Capture", WHITE), ("Accept", GREEN), ("Reject", RED)],
     };
 
     for (i, (text, color)) in buttons.into_iter().enumerate() {
-        draw_circle(button_x, button_y + (i as f32) * button_y_separation, 40.0, color);
-        draw_text(text, label_x, button_y + (i as f32) * button_y_separation + font_size / 4.0, font_size, WHITE);
+        draw_circle(
+            button_x,
+            button_y + (i as f32) * button_y_separation,
+            40.0,
+            color,
+        );
+        draw_text(
+            text,
+            label_x,
+            button_y + (i as f32) * button_y_separation + font_size / 4.0,
+            font_size,
+            WHITE,
+        );
     }
 }
-
 
 // fn capture_image(camera: &Camera) {
 //     let file = camera.capture_image().wait().unwrap();
@@ -358,7 +368,6 @@ fn draw_buttons(image_height: f32, image_width: f32, program_state: &ProgramStat
 //         .wait();
 // }
 
-
 struct DisplayTexture {
     texture: Texture2D,
     width: u32,
@@ -367,8 +376,10 @@ struct DisplayTexture {
 
 impl DisplayTexture {
     fn new(image: &RgbaImage) -> Self {
-        let width = u16::try_from(image.width()).expect("Image width exceeds Macroquad's texture limit");
-        let height = u16::try_from(image.height()).expect("Image height exceeds Macroquad's texture limit");
+        let width =
+            u16::try_from(image.width()).expect("Image width exceeds Macroquad's texture limit");
+        let height =
+            u16::try_from(image.height()).expect("Image height exceeds Macroquad's texture limit");
 
         Self {
             texture: Texture2D::from_rgba8(width, height, image.as_raw()),
@@ -388,26 +399,52 @@ impl DisplayTexture {
 }
 
 fn draw_image(texture: &Texture2D, target_height: f32, target_width: f32) {
-
-    draw_texture_ex(texture, 0., 0., WHITE, DrawTextureParams { dest_size: Some(vec2(target_width, target_height)), ..Default::default() });
+    draw_texture_ex(
+        texture,
+        0.,
+        0.,
+        WHITE,
+        DrawTextureParams {
+            dest_size: Some(vec2(target_width, target_height)),
+            ..Default::default()
+        },
+    );
 }
 
 fn draw_cheese_frame(image_height: f32, image_width: f32) {
     let font_size = 400.0;
     let center = get_text_center("CHEESE!", Option::None, font_size as u16, 1.0, 0.0);
-    draw_text("CHEESE!", image_width / 2.0 - center.x / 2.0, image_height / 2.0 - center.y / 2.0, font_size, YELLOW);
+    draw_text(
+        "CHEESE!",
+        image_width / 2.0 - center.x / 2.0,
+        image_height / 2.0 - center.y / 2.0,
+        font_size,
+        YELLOW,
+    );
 }
 
 fn draw_loading_frame(image_height: f32, image_width: f32) {
     let font_size = 400.0;
 
     let center = get_text_center("Loading...", Option::None, font_size as u16, 1.0, 0.0);
-    draw_text("Loading...", image_width / 2.0 - center.x / 2.0, image_height / 2.0 - center.y / 2.0, font_size, YELLOW);
+    draw_text(
+        "Loading...",
+        image_width / 2.0 - center.x / 2.0,
+        image_height / 2.0 - center.y / 2.0,
+        font_size,
+        YELLOW,
+    );
 }
 
 fn draw_review_frame(image_height: f32, image_width: f32) {
     let font_size = 400.0;
 
     let center = get_text_center("OK?", Option::None, font_size as u16, 1.0, 0.0);
-    draw_text("OK?", image_width / 2.0 - center.x / 2.0, image_height / 2.0 - center.y / 2.0, font_size, YELLOW);
+    draw_text(
+        "OK?",
+        image_width / 2.0 - center.x / 2.0,
+        image_height / 2.0 - center.y / 2.0,
+        font_size,
+        YELLOW,
+    );
 }
