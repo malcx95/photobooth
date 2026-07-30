@@ -37,8 +37,8 @@ const TURN_ON_LIGHT_MSG_TYPE: u8 = 0x4A;
 const MSG_TIMEOUT: u64 = 200;
 
 const ACCEPT_BUTTON_PIN: u8 = 6;
-const TAKE_PHOTO_BUTTON_PIN: u8 = 5;
-const REJECT_BUTTON_PIN: u8 = 4;
+const TAKE_PHOTO_BUTTON_PIN: u8 = 8;
+const REJECT_BUTTON_PIN: u8 = 7;
 
 const IMAGE_WIDTH: f32 = 1024.0;
 const IMAGE_HEIGHT: f32 = 680.0;
@@ -95,9 +95,6 @@ async fn main() -> Result<(), String> {
     camera_tx.send(CameraCommand::CapturePreview).unwrap();
     let mut curr_preview_image = RgbaImage::new(1000, 1000);
     let mut last_captured_image = RgbaImage::new(1000, 1000);
-    // Textures must outlive the frame in which they are drawn. Macroquad queues
-    // draw calls until `next_frame`, so creating one inside a draw function can
-    // leave the renderer with a texture that has already been released.
     let mut preview_texture = DisplayTexture::new(&curr_preview_image);
     let mut captured_texture = DisplayTexture::new(&last_captured_image);
     let mut last_captured_path: CameraFilePath;
@@ -165,8 +162,7 @@ async fn main() -> Result<(), String> {
                 draw_cheese_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
             }
             ProgramState::FetchingImage => {
-                println!("Waiting for image...");
-                let fetch_response = image_rx.try_recv(); //.recv_timeout(Duration::from_millis(2000));
+                let fetch_response = image_rx.try_recv();
                 match fetch_response {
                     Ok(ImageMessage::FetchedImage(image, path)) => {
                         println!("Got image");
@@ -185,7 +181,6 @@ async fn main() -> Result<(), String> {
                 draw_loading_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
             }
             ProgramState::Review => {
-                // state = ProgramState::Preview;
                 draw_image(&captured_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &state);
                 draw_review_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
@@ -318,8 +313,8 @@ fn find_port() -> Box<dyn SerialPort> {
 fn draw_countdown(count: f32, image_height: f32, image_width: f32) {
     let count_digit = count.ceil() as i32;
     let digit_str = format!("{}", count_digit);
-    // let font_size = 160.0 * (-(count * 2.0 * PI).sin() + 2.0) / 2.0;
-    let font_size = 260.0 * (count % 1.0 + 0.3);
+    let font_size = 160.0 * (-(count * 2.0 * PI).sin() + 2.0) / 2.0;
+    // let font_size = 260.0 * (count % 1.0 + 0.3);
 
     let center = get_text_center(&digit_str, Option::None, font_size as u16, 1.0, 0.0);
     draw_text(
@@ -340,6 +335,7 @@ fn draw_buttons(image_height: f32, image_width: f32, program_state: &ProgramStat
 
     let mut buttons = match program_state {
         ProgramState::Review => vec![("Accept", GREEN), ("Reject", RED)],
+        ProgramState::Preview => vec![("Capture", WHITE)],
         _ => vec![("Capture", WHITE), ("Accept", GREEN), ("Reject", RED)],
     };
 

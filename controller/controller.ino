@@ -1,13 +1,15 @@
 #include <stdint.h>
 
-constexpr const uint8_t RX_START_WORD = 0x41;
-constexpr const uint8_t TX_START_WORD = 0xEE;
+constexpr uint8_t RX_START_WORD = 0x41;
+constexpr uint8_t TX_START_WORD = 0xEE;
+
+constexpr uint8_t RGB_PIN = 10;
 
 enum class Button : uint8_t
 {
   ACCEPT = 6,
-  TAKE_PHOTO = 5,
-  REJECT = 4,
+  REJECT = 7,
+  TAKE_PHOTO = 8,
 };
 
 enum RXMessageType : uint8_t
@@ -37,12 +39,14 @@ struct TXMessage
 struct ButtonState
 {
   Button button;
+  uint8_t led_pin;
   bool pressed;
   bool prev_pressed;
 
   void setup()
   {
     pinMode((uint8_t)button, INPUT_PULLUP);
+    pinMode(led_pin, OUTPUT);
   }
 
   bool read_state()
@@ -54,14 +58,15 @@ struct ButtonState
   {
     prev_pressed = pressed;
     pressed = digitalRead((uint8_t)button) == LOW;
+    digitalWrite(led_pin, pressed ? HIGH : LOW);
   }
 };
 
 ButtonState buttons[]
 {
-  {Button::ACCEPT, false, false},
-  {Button::TAKE_PHOTO, false, false},
-  {Button::REJECT, false, false},
+  {Button::ACCEPT, 5, false, false},
+  {Button::REJECT, 4, false, false},
+  {Button::TAKE_PHOTO, 3, false, false},
 };
 
 const size_t NUM_BUTTONS = 3;
