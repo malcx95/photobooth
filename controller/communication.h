@@ -11,7 +11,7 @@ constexpr uint8_t TX_START_WORD = 0xEE;
 enum RXMessageType : uint8_t
 {
   CONNECT = 0xDE,
-  TURN_ON_LIGHT = 0x42,
+  SET_LIGHT_STATE = 0x42,
 };
 
 struct RXMessage

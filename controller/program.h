@@ -5,7 +5,7 @@
 #include "ledstrip.h"
 #include "timer.h"
 
-constexpr size_t NUM_BUTTONS = 3;
+constexpr size_t NUM_BUTTONS = 6;
 
 class ControllerState
 {
@@ -15,15 +15,26 @@ public:
 
 private:
 
+  // BIG_WHITE  = 5
+  // RED =        4
+  // BLUE =       3
+  // WHITE =      2
+  // YELLOW =     1
+  // GREEN =      0
+
   button::ButtonState buttons[NUM_BUTTONS]
   {
-    {button::Button::ACCEPT, 5, false, false},
-    {button::Button::REJECT, 4, false, false},
-    {button::Button::TAKE_PHOTO, 3, false, false},
+    {button::Button::BIG_WHITE, 5, false, false},
+    {button::Button::RED,       4, false, false},
+    {button::Button::BLUE,      3, false, false},
+    {button::Button::WHITE,     2, false, false},
+    {button::Button::YELLOW,    1, false, false},
+    {button::Button::GREEN,     0, false, false},
   };
 
   LEDStrip ledstrip;
   Timer comm_timer{100};
   Timer led_timer{10};
 
+  uint64_t it = 0;
 };

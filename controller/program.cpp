@@ -3,6 +3,8 @@
 #include "ledstrip.h"
 #include <Arduino.h>
 #include <FastLED.h>
+#include <cmath>
+#include <cstdint>
 
 
 void ControllerState::init()
@@ -18,9 +20,11 @@ void ControllerState::init()
 
 void ControllerState::update()
 {
+  it++;
   for (size_t i = 0; i < NUM_BUTTONS; ++i)
   {
     buttons[i].update_state();
+    buttons[i].set_brightness((sin((double)it / 10.0) + 1.0) / 2.0);
   }
 
   if (led_timer.triggered())
@@ -34,9 +38,9 @@ void ControllerState::update()
     bool read = read_serial(&msg);
     if (read)
     {
-      if (msg.type == comm::TURN_ON_LIGHT)
+      if (msg.type == comm::SET_LIGHT_STATE)
       {
-        delay(1000);
+        ledstrip.state = (LEDState)msg.payload;
       }
       else if (msg.type == comm::CONNECT)
       {
@@ -50,6 +54,7 @@ void ControllerState::update()
       }
     }
 
+    bool pressed = false;
     for (size_t i = 0; i < NUM_BUTTONS; ++i)
     {
       button::ButtonState state = buttons[i];

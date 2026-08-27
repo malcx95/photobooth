@@ -6,11 +6,21 @@
 namespace button
 {
 
+// BIG_WHITE  = 6
+// RED = 7
+// BLUE = 8
+// WHITE = 9
+// YELLOW = 20
+// GREEN = 21
+
 enum class Button : uint8_t
 {
-  ACCEPT = 6,
-  REJECT = 7,
-  TAKE_PHOTO = 8,
+  BIG_WHITE  = 6,
+  RED = 7,
+  BLUE = 8,
+  WHITE = 9,
+  YELLOW = 20,
+  GREEN = 21,
 };
 
 struct ButtonState
@@ -23,6 +33,7 @@ struct ButtonState
   void setup();
   bool read_state();
   void update_state();
+  void set_brightness(float brightness);
 };
 
 }

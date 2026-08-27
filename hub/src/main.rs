@@ -32,9 +32,9 @@ const CONNECT_MSG_TYPE: u8 = 0xDE;
 const CONNECT_ACK_MSG_TYPE: u8 = 0xAE;
 const BUTTON_PRESS_MSG_TYPE: u8 = 0xBB;
 
-const TURN_ON_LIGHT_MSG_TYPE: u8 = 0x4A;
+const SET_LIGHT_STATE_MSG_TYPE: u8 = 0x4A;
 
-const MSG_TIMEOUT: u64 = 200;
+const MSG_TIMEOUT: u64 = 400;
 
 const ACCEPT_BUTTON_PIN: u8 = 6;
 const TAKE_PHOTO_BUTTON_PIN: u8 = 8;
@@ -45,6 +45,7 @@ const IMAGE_HEIGHT: f32 = 680.0;
 
 enum TXMessage {
     Connect,
+    SetLightState(u8),
 }
 
 enum RXMessage {
@@ -290,8 +291,7 @@ fn find_port() -> Box<dyn SerialPort> {
 
         println!("Trying port {}", &p.port_name);
 
-        let connect_msg = [1, 1, 1, HUB_START_WORD, CONNECT_MSG_TYPE, 0];
-        port.write(&connect_msg).expect("Write failed!");
+        send_serial_message(&mut port, TXMessage::Connect).expect("Write failed!");
         println!("This port might respond");
 
         let mut serial_buf = [0; 3];
@@ -308,6 +308,14 @@ fn find_port() -> Box<dyn SerialPort> {
         }
     }
     panic!("Found no ports!");
+}
+
+fn send_serial_message(port: &mut Box<dyn SerialPort>, message: TXMessage) -> Result<usize, std::io::Error> {
+    let message = match message {
+        TXMessage::Connect => [1, 1, 1, HUB_START_WORD, CONNECT_MSG_TYPE, 0],
+        TXMessage::SetLightState(state) => [1, 1, 1, HUB_START_WORD, SET_LIGHT_STATE_MSG_TYPE, state],
+    };
+    port.write(&message)
 }
 
 fn draw_countdown(count: f32, image_height: f32, image_width: f32) {

@@ -41,9 +41,11 @@ void LEDStrip::update()
 
 void LEDStrip::update_standby()
 {
-  float speed = 1.f/10.f;
-  float sparseness = 10;
-  float width = 3;
+  float speed = 0.1f;
+  float sparseness = 20;
+  float width = 6;
+  float color_speed = 0.01f;
+  float color_sparseness = 0.01f;
 
   float it_f = it * speed;
   for (size_t i = 0; i < NUM_LEDS; ++i)
@@ -54,7 +56,7 @@ void LEDStrip::update_standby()
     float brightness = b > half_width ? 0.f : 1.f - (b / half_width);
     auto brightness_int = (uint8_t)(brightness * 255.f);
 
-    uint8_t hue = (uint8_t)(((float)i + it_f / 10.f) * 255.f);
+    uint8_t hue = (uint8_t)(((float)i * color_sparseness + it_f * color_speed) * 255.f);
     leds[i].setHSV(hue, 255, brightness_int);
   }
 }

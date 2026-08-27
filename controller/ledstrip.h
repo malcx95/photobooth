@@ -5,12 +5,12 @@
 
 constexpr size_t NUM_LEDS = 160 * 5;
 
-enum class LEDState
+enum LEDState : uint8_t
 {
-  STANDBY,
-  COUNTDOWN_1,
-  COUNTDOWN_2,
-  COUNTDOWN_3
+  STANDBY = 1,
+  COUNTDOWN_1 = 2,
+  COUNTDOWN_2 = 3,
+  COUNTDOWN_3 = 4
 };
 
 class LEDStrip
