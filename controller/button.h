@@ -27,8 +27,8 @@ struct ButtonState
 {
   Button button;
   uint8_t led_pin;
-  bool pressed;
-  bool prev_pressed;
+  bool pressed = false;
+  bool prev_pressed = false;
 
   void setup();
   bool read_state();

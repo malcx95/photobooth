@@ -8,6 +8,8 @@ void ButtonState::setup()
 {
   pinMode((uint8_t)button, INPUT_PULLUP);
   pinMode(led_pin, OUTPUT);
+  pressed = false;
+  prev_pressed = false;
 }
 
 bool ButtonState::read_state()
@@ -19,7 +21,6 @@ void ButtonState::update_state()
 {
   prev_pressed = pressed;
   pressed = digitalRead((uint8_t)button) == LOW;
-  // digitalWrite(led_pin, pressed ? HIGH : LOW);
 }
 
 void ButtonState::set_brightness(float brightness)

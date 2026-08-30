@@ -10,7 +10,8 @@ enum LEDState : uint8_t
   STANDBY = 1,
   COUNTDOWN_1 = 2,
   COUNTDOWN_2 = 3,
-  COUNTDOWN_3 = 4
+  COUNTDOWN_3 = 4,
+  CAPTURING = 5
 };
 
 class LEDStrip

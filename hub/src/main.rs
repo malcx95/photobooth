@@ -28,24 +28,35 @@ const IMAGE_SAVE_DIRECTORY: &str = "/home/malcolm/photoboothimages";
 
 const CONTROLLER_BAUD_RATE: u32 = 9600;
 
-const CONNECT_MSG_TYPE: u8 = 0xDE;
 const CONNECT_ACK_MSG_TYPE: u8 = 0xAE;
 const BUTTON_PRESS_MSG_TYPE: u8 = 0xBB;
 
+const CONNECT_MSG_TYPE: u8 = 0xDE;
 const SET_LIGHT_STATE_MSG_TYPE: u8 = 0x4A;
+const SET_BUTTON_STATE_MSG_TYPE: u8 = 0x4B;
 
 const MSG_TIMEOUT: u64 = 400;
 
-const ACCEPT_BUTTON_PIN: u8 = 6;
-const TAKE_PHOTO_BUTTON_PIN: u8 = 8;
-const REJECT_BUTTON_PIN: u8 = 7;
+const BIG_WHITE_BUTTON: u8 = 6;
+const RED_BUTTON: u8 = 7;
+const BLUE_BUTTON: u8 = 8;
+const WHITE_BUTTON: u8 = 9;
+const YELLOW_BUTTON: u8 = 20;
+const GREEN_BUTTON: u8 = 21;
 
 const IMAGE_WIDTH: f32 = 1024.0;
 const IMAGE_HEIGHT: f32 = 680.0;
 
+const LED_STATE_STANDBY: u8 = 1;
+const LED_STATE_COUNTDOWN_1: u8 = 2;
+const LED_STATE_COUNTDOWN_2: u8 = 3;
+const LED_STATE_COUNTDOWN_3: u8 = 4;
+const LED_STATE_CAPTURING: u8 = 5;
+
 enum TXMessage {
     Connect,
     SetLightState(u8),
+    SetButtonState(u8),
 }
 
 enum RXMessage {
@@ -90,6 +101,7 @@ async fn main() -> Result<(), String> {
     }
 
     let mut state = ProgramState::Preview;
+    send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_STANDBY));
 
     let mut countdown_start = Instant::now();
 
@@ -118,6 +130,7 @@ async fn main() -> Result<(), String> {
                     Some(ButtonPress::TakePhoto) => {
                         state = ProgramState::Countdown;
                         countdown_start = Instant::now();
+                        send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_COUNTDOWN_3));
                     }
                     _ => {
                         camera_tx.send(CameraCommand::CapturePreview).unwrap();
@@ -142,8 +155,18 @@ async fn main() -> Result<(), String> {
                 if secs_left <= 0.0 {
                     state = ProgramState::Capturing;
                     camera_tx.send(CameraCommand::CaptureImage).unwrap();
+                    send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_CAPTURING));
                 } else {
                     draw_countdown(secs_left, IMAGE_HEIGHT, IMAGE_WIDTH);
+                    if secs_left > 2.0 {
+                        send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_COUNTDOWN_3));
+                    }
+                    else if secs_left > 1.0 {
+                        send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_COUNTDOWN_2));
+                    }
+                    else if secs_left > 0.0 {
+                        send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_COUNTDOWN_1));
+                    }
                 }
             }
             ProgramState::Capturing => {
@@ -171,10 +194,12 @@ async fn main() -> Result<(), String> {
                         captured_texture.update(&last_captured_image);
                         last_captured_path = path;
                         state = ProgramState::Review;
+                        send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_STANDBY));
                     }
                     Ok(ImageMessage::FetchFailed) => {
                         println!("Failed to fetch image");
                         state = ProgramState::Preview;
+                        send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_STANDBY));
                     }
                     _ => {}
                 };
@@ -230,12 +255,14 @@ fn read_buttons(port: &mut Box<dyn SerialPort>) -> Option<ButtonPress> {
     let press_opt = match read_serial(port) {
         RXMessage::Nothing => None,
         RXMessage::ButtonPress(button) => {
-            if button == ACCEPT_BUTTON_PIN {
-                Some(ButtonPress::Accept)
-            } else if button == TAKE_PHOTO_BUTTON_PIN {
+            if button == BIG_WHITE_BUTTON {
                 Some(ButtonPress::TakePhoto)
-            } else {
+            } else if button == RED_BUTTON {
                 Some(ButtonPress::Reject)
+            } else if button == GREEN_BUTTON {
+                Some(ButtonPress::Accept)
+            } else {
+                None
             }
         }
     };
@@ -272,6 +299,7 @@ fn read_serial(port: &mut Box<dyn SerialPort>) -> RXMessage {
 
     if serial_buf[0] == CONTROLLER_START_WORD {
         if serial_buf[1] == BUTTON_PRESS_MSG_TYPE {
+            println!("BUTTON PRESS: {}", serial_buf[2]);
             return RXMessage::ButtonPress(serial_buf[2]);
         }
     }
@@ -314,6 +342,7 @@ fn send_serial_message(port: &mut Box<dyn SerialPort>, message: TXMessage) -> Re
     let message = match message {
         TXMessage::Connect => [1, 1, 1, HUB_START_WORD, CONNECT_MSG_TYPE, 0],
         TXMessage::SetLightState(state) => [1, 1, 1, HUB_START_WORD, SET_LIGHT_STATE_MSG_TYPE, state],
+        TXMessage::SetButtonState(state) => [1, 1, 1, HUB_START_WORD, SET_BUTTON_STATE_MSG_TYPE, state],
     };
     port.write(&message)
 }

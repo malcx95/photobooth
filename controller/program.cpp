@@ -21,11 +21,6 @@ void ControllerState::init()
 void ControllerState::update()
 {
   it++;
-  for (size_t i = 0; i < NUM_BUTTONS; ++i)
-  {
-    buttons[i].update_state();
-    buttons[i].set_brightness((sin((double)it / 10.0) + 1.0) / 2.0);
-  }
 
   if (led_timer.triggered())
   {
@@ -34,6 +29,12 @@ void ControllerState::update()
 
   if (comm_timer.triggered())
   {
+    for (size_t i = 0; i < NUM_BUTTONS; ++i)
+    {
+      buttons[i].update_state();
+      // buttons[i].set_brightness((sin((double)it / 1000.0) + 1.0) / 2.0);
+    }
+
     comm::RXMessage msg;
     bool read = read_serial(&msg);
     if (read)
@@ -54,7 +55,6 @@ void ControllerState::update()
       }
     }
 
-    bool pressed = false;
     for (size_t i = 0; i < NUM_BUTTONS; ++i)
     {
       button::ButtonState state = buttons[i];

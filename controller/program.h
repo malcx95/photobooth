@@ -33,8 +33,8 @@ private:
   };
 
   LEDStrip ledstrip;
-  Timer comm_timer{100};
-  Timer led_timer{10};
+  Timer comm_timer{10};
+  Timer led_timer{50};
 
   uint64_t it = 0;
 };
