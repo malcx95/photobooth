@@ -6,7 +6,7 @@ bool comm::read_serial(comm::RXMessage* msg)
   if (Serial.available() >= 3)
   {
     bool found = false;
-    while (!found/* && Serial.available() > 3*/)
+    while (!found)
     {
       found = Serial.read() == RX_START_WORD;
     }

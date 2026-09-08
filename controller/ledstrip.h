@@ -27,6 +27,7 @@ private:
   void update_countdown1();
   void update_countdown2();
   void update_countdown3();
+  void update_capturing();
 
 private:
   CRGB leds[NUM_LEDS];

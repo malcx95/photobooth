@@ -9,7 +9,6 @@ constexpr uint8_t RGB_PIN = 10;
 
 void LEDStrip::init()
 {
-  //pinMode(LED_BUILTIN, OUTPUT);
   FastLED.addLeds<WS2812B, RGB_PIN, GRB>(leds, NUM_LEDS);
   FastLED.setBrightness(255);
   FastLED.setMaxPowerInVoltsAndMilliamps(5, MAX_CURRENT_MILLIAMPS);
@@ -29,6 +28,9 @@ void LEDStrip::update()
       break;
     case LEDState::COUNTDOWN_3:
       update_countdown3();
+      break;
+    case LEDState::CAPTURING:
+      update_capturing();
       break;
     default:
       break;
@@ -74,4 +76,9 @@ void LEDStrip::update_countdown2()
 void LEDStrip::update_countdown3()
 {
   fill_solid(leds, NUM_LEDS, CRGB::Blue);
+}
+
+void LEDStrip::update_capturing()
+{
+  fill_solid(leds, NUM_LEDS, CRGB::White);
 }

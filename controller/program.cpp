@@ -18,13 +18,28 @@ void ControllerState::init()
   ledstrip.state = LEDState::STANDBY;
 }
 
+void ControllerState::set_enabled_buttons(uint8_t enabled_mask)
+{
+  for (size_t i = 0; i < NUM_BUTTONS; ++i)
+  {
+    bool should_be_enabled = ((1 << i) & enabled_mask) != 0;
+    buttons[i].enabled = should_be_enabled;
+  }
+}
+
 void ControllerState::update()
 {
-  it++;
-
   if (led_timer.triggered())
   {
     ledstrip.update();
+  }
+
+  if (button_timer.triggered())
+  {
+    for (size_t i = 0; i < NUM_BUTTONS; ++i)
+    {
+      buttons[i].update_led();
+    }
   }
 
   if (comm_timer.triggered())
@@ -32,7 +47,6 @@ void ControllerState::update()
     for (size_t i = 0; i < NUM_BUTTONS; ++i)
     {
       buttons[i].update_state();
-      // buttons[i].set_brightness((sin((double)it / 1000.0) + 1.0) / 2.0);
     }
 
     comm::RXMessage msg;
@@ -48,6 +62,10 @@ void ControllerState::update()
         comm::TXMessage msg{comm::CONNECT_ACK, 0};
         send_msg(&msg);
         delay(1000);
+      }
+      else if (msg.type == comm::SET_ENABLED_BUTTONS)
+      {
+        set_enabled_buttons(msg.payload);
       }
       else
       {

@@ -17,6 +17,24 @@ bool ButtonState::read_state()
   return pressed && !prev_pressed;
 }
 
+void ButtonState::update_led()
+{
+  if (!enabled)
+  {
+    set_brightness(0.f);
+  }
+  else if (pressed)
+  {
+    set_brightness(1.f);
+  }
+  else
+  {
+    const auto it = millis();
+    const float brightness = 0.1 + 0.6 * (sin((double)it / 500.0) + 1.0) / 2.0;
+    set_brightness(brightness);
+  }
+}
+
 void ButtonState::update_state()
 {
   prev_pressed = pressed;

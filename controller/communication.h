@@ -12,7 +12,7 @@ enum RXMessageType : uint8_t
 {
   CONNECT = 0xDE,
   SET_LIGHT_STATE = 0x4A,
-  SET_BUTTON_STATE = 0x4B,
+  SET_ENABLED_BUTTONS = 0x4B,
 };
 
 struct RXMessage

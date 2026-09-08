@@ -24,17 +24,20 @@ private:
 
   button::ButtonState buttons[NUM_BUTTONS]
   {
-    {button::Button::BIG_WHITE, 5, false, false},
-    {button::Button::RED,       4, false, false},
-    {button::Button::BLUE,      3, false, false},
-    {button::Button::WHITE,     2, false, false},
-    {button::Button::YELLOW,    1, false, false},
-    {button::Button::GREEN,     0, false, false},
+    {button::Button::BIG_WHITE, 5, false, false, false},
+    {button::Button::RED,       4, false, false, false},
+    {button::Button::BLUE,      3, false, false, false},
+    {button::Button::WHITE,     2, false, false, false},
+    {button::Button::YELLOW,    1, false, false, false},
+    {button::Button::GREEN,     0, false, false, false},
   };
 
   LEDStrip ledstrip;
   Timer comm_timer{10};
   Timer led_timer{50};
+  Timer button_timer{50};
 
-  uint64_t it = 0;
+private:
+  void set_enabled_buttons(uint8_t enabled_mask);
 };
+

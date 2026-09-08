@@ -1,4 +1,5 @@
 mod camera;
+mod timer;
 
 use core::panic;
 use gphoto2::Context;
@@ -33,7 +34,7 @@ const BUTTON_PRESS_MSG_TYPE: u8 = 0xBB;
 
 const CONNECT_MSG_TYPE: u8 = 0xDE;
 const SET_LIGHT_STATE_MSG_TYPE: u8 = 0x4A;
-const SET_BUTTON_STATE_MSG_TYPE: u8 = 0x4B;
+const SET_ENABLED_BUTTONS_MSG_TYPE: u8 = 0x4B;
 
 const MSG_TIMEOUT: u64 = 400;
 
@@ -56,7 +57,7 @@ const LED_STATE_CAPTURING: u8 = 5;
 enum TXMessage {
     Connect,
     SetLightState(u8),
-    SetButtonState(u8),
+    SetEnabledButtons(u8),
 }
 
 enum RXMessage {
@@ -76,6 +77,13 @@ enum ProgramState {
     Capturing,
     FetchingImage,
     Review,
+}
+
+struct Button {
+    pub pin: u8,
+    pub color: Color,
+    pub text: String,
+    pub enabled: bool,
 }
 
 #[macroquad::main("photobooth-hub")]
@@ -112,8 +120,23 @@ async fn main() -> Result<(), String> {
     let mut captured_texture = DisplayTexture::new(&last_captured_image);
     let mut last_captured_path: CameraFilePath;
 
+    let mut buttons_timer = timer::Timer::new(100);
+    let mut buttons = init_buttons();
+
+    let mut ledstrip_timer = timer::Timer::new(150);
+
     loop {
         let button_press = read_buttons(&mut port);
+        let countdown_secs_left = 3.0 - countdown_start.elapsed().as_secs_f32();
+        update_enabled_buttons(&mut buttons, &state);
+
+        if buttons_timer.triggered() {
+            send_buttons_enabled_message(&mut port, &mut buttons);
+        }
+
+        if ledstrip_timer.triggered() {
+            send_ledstrip_message(&mut port, &state, countdown_secs_left);
+        }
 
         match state {
             ProgramState::Preview => {
@@ -130,7 +153,6 @@ async fn main() -> Result<(), String> {
                     Some(ButtonPress::TakePhoto) => {
                         state = ProgramState::Countdown;
                         countdown_start = Instant::now();
-                        send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_COUNTDOWN_3));
                     }
                     _ => {
                         camera_tx.send(CameraCommand::CapturePreview).unwrap();
@@ -138,7 +160,7 @@ async fn main() -> Result<(), String> {
                 }
 
                 draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
-                draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &state);
+                draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons);
             }
             ProgramState::Countdown => {
                 camera_tx.send(CameraCommand::CapturePreview).unwrap();
@@ -151,22 +173,11 @@ async fn main() -> Result<(), String> {
                     _ => {}
                 };
                 draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
-                let secs_left = 3.0 - countdown_start.elapsed().as_secs_f32();
-                if secs_left <= 0.0 {
+                if countdown_secs_left <= 0.0 {
                     state = ProgramState::Capturing;
                     camera_tx.send(CameraCommand::CaptureImage).unwrap();
-                    send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_CAPTURING));
                 } else {
-                    draw_countdown(secs_left, IMAGE_HEIGHT, IMAGE_WIDTH);
-                    if secs_left > 2.0 {
-                        send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_COUNTDOWN_3));
-                    }
-                    else if secs_left > 1.0 {
-                        send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_COUNTDOWN_2));
-                    }
-                    else if secs_left > 0.0 {
-                        send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_COUNTDOWN_1));
-                    }
+                    draw_countdown(countdown_secs_left, IMAGE_HEIGHT, IMAGE_WIDTH);
                 }
             }
             ProgramState::Capturing => {
@@ -194,12 +205,10 @@ async fn main() -> Result<(), String> {
                         captured_texture.update(&last_captured_image);
                         last_captured_path = path;
                         state = ProgramState::Review;
-                        send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_STANDBY));
                     }
                     Ok(ImageMessage::FetchFailed) => {
                         println!("Failed to fetch image");
                         state = ProgramState::Preview;
-                        send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_STANDBY));
                     }
                     _ => {}
                 };
@@ -208,7 +217,7 @@ async fn main() -> Result<(), String> {
             }
             ProgramState::Review => {
                 draw_image(&captured_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
-                draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &state);
+                draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons);
                 draw_review_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
 
                 match button_press {
@@ -224,6 +233,61 @@ async fn main() -> Result<(), String> {
             }
         }
         next_frame().await;
+    }
+}
+
+fn init_buttons() -> Vec<Button> {
+    vec![
+        Button {pin: BIG_WHITE_BUTTON, color: GRAY, text: String::from("Capture"), enabled: false},
+        Button {pin: RED_BUTTON,       color: RED, text: String::from("Reject"), enabled: false},
+        Button {pin: BLUE_BUTTON,      color: BLUE, text: String::from("Blue"), enabled: false},
+        Button {pin: WHITE_BUTTON,     color: WHITE, text: String::from("White"), enabled: false},
+        Button {pin: YELLOW_BUTTON,    color: YELLOW, text: String::from("Yellow"), enabled: false},
+        Button {pin: GREEN_BUTTON,     color: GREEN, text: String::from("Accept"), enabled: false},
+    ]
+}
+
+fn send_buttons_enabled_message(port: &mut Box<dyn SerialPort>, buttons: &mut Vec<Button>) {
+    let mut bitmask: u8 = 0;
+    for (i, button) in buttons.iter().enumerate() {
+        bitmask |= (button.enabled as u8) << i;
+    }
+    let _ = send_serial_message(port, TXMessage::SetEnabledButtons(bitmask));
+}
+
+fn send_ledstrip_message(port: &mut Box<dyn SerialPort>, state: &ProgramState, countdown: f32) {
+    let light_state = match state {
+        ProgramState::Preview => LED_STATE_STANDBY,
+        ProgramState::Countdown => {
+            if countdown > 2.0 {
+                LED_STATE_COUNTDOWN_3
+            }
+            else if countdown > 1.0 {
+                LED_STATE_COUNTDOWN_2
+            }
+            else {
+                LED_STATE_COUNTDOWN_1
+            }
+        }
+        ProgramState::Capturing => LED_STATE_CAPTURING,
+        ProgramState::FetchingImage => LED_STATE_STANDBY,
+        ProgramState::Review => LED_STATE_STANDBY,
+    };
+    let _ = send_serial_message(port, TXMessage::SetLightState(light_state));
+}
+
+fn update_enabled_buttons(buttons: &mut Vec<Button>, state: &ProgramState) {
+    let enabled_pins = match state {
+        ProgramState::Preview => vec![BIG_WHITE_BUTTON],
+        ProgramState::Countdown => vec![RED_BUTTON],
+        ProgramState::Capturing => vec![],
+        ProgramState::FetchingImage => vec![],
+        ProgramState::Review => vec![RED_BUTTON, GREEN_BUTTON],
+    };
+
+    for button in buttons.iter_mut() {
+        let should_be_enabled = enabled_pins.contains(&button.pin);
+        button.enabled = should_be_enabled;
     }
 }
 
@@ -299,7 +363,6 @@ fn read_serial(port: &mut Box<dyn SerialPort>) -> RXMessage {
 
     if serial_buf[0] == CONTROLLER_START_WORD {
         if serial_buf[1] == BUTTON_PRESS_MSG_TYPE {
-            println!("BUTTON PRESS: {}", serial_buf[2]);
             return RXMessage::ButtonPress(serial_buf[2]);
         }
     }
@@ -319,7 +382,7 @@ fn find_port() -> Box<dyn SerialPort> {
 
         println!("Trying port {}", &p.port_name);
 
-        send_serial_message(&mut port, TXMessage::Connect).expect("Write failed!");
+        send_serial_message(&mut port, TXMessage::Connect);
         println!("This port might respond");
 
         let mut serial_buf = [0; 3];
@@ -338,13 +401,13 @@ fn find_port() -> Box<dyn SerialPort> {
     panic!("Found no ports!");
 }
 
-fn send_serial_message(port: &mut Box<dyn SerialPort>, message: TXMessage) -> Result<usize, std::io::Error> {
+fn send_serial_message(port: &mut Box<dyn SerialPort>, message: TXMessage) {
     let message = match message {
         TXMessage::Connect => [1, 1, 1, HUB_START_WORD, CONNECT_MSG_TYPE, 0],
         TXMessage::SetLightState(state) => [1, 1, 1, HUB_START_WORD, SET_LIGHT_STATE_MSG_TYPE, state],
-        TXMessage::SetButtonState(state) => [1, 1, 1, HUB_START_WORD, SET_BUTTON_STATE_MSG_TYPE, state],
+        TXMessage::SetEnabledButtons(state) => [1, 1, 1, HUB_START_WORD, SET_ENABLED_BUTTONS_MSG_TYPE, state],
     };
-    port.write(&message)
+    let _ = port.write(&message);
 }
 
 fn draw_countdown(count: f32, image_height: f32, image_width: f32) {
@@ -363,33 +426,29 @@ fn draw_countdown(count: f32, image_height: f32, image_width: f32) {
     );
 }
 
-fn draw_buttons(image_height: f32, image_width: f32, program_state: &ProgramState) {
+fn draw_buttons(image_height: f32, image_width: f32, buttons: &Vec<Button>) {
     let button_x = image_width + 100.0;
     let label_x = button_x + 60.0;
     let button_y = 100.0;
     let button_y_separation = 100.0;
     let font_size = 40.0;
 
-    let mut buttons = match program_state {
-        ProgramState::Review => vec![("Accept", GREEN), ("Reject", RED)],
-        ProgramState::Preview => vec![("Capture", WHITE)],
-        _ => vec![("Capture", WHITE), ("Accept", GREEN), ("Reject", RED)],
-    };
-
-    for (i, (text, color)) in buttons.into_iter().enumerate() {
-        draw_circle(
-            button_x,
-            button_y + (i as f32) * button_y_separation,
-            40.0,
-            color,
-        );
-        draw_text(
-            text,
-            label_x,
-            button_y + (i as f32) * button_y_separation + font_size / 4.0,
-            font_size,
-            WHITE,
-        );
+    for (i, button) in buttons.into_iter().enumerate() {
+        if button.enabled {
+            draw_circle(
+                button_x,
+                button_y + (i as f32) * button_y_separation,
+                40.0,
+                button.color,
+            );
+            draw_text(
+                button.text.as_str(),
+                label_x,
+                button_y + (i as f32) * button_y_separation + font_size / 4.0,
+                font_size,
+                WHITE,
+            );
+        }
     }
 }
 
