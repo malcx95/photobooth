@@ -29,6 +29,7 @@ pub enum ImageMessage {
 pub enum CameraCommand {
     CaptureImage,
     CapturePreview,
+    CycleEffect,
     FetchImage(CameraFilePath),
     DeleteImage(CameraFilePath),
 }
@@ -48,6 +49,28 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
         }
     }
 
+    let effects = vec![
+        "32768",
+        "32769",
+        "32770",
+        "32771",
+        "32772",
+        "32773",
+        "32784",
+        "32800",
+        "32801",
+        "32816",
+        "32832",
+        "32848",
+        "32849",
+        "32850",
+        "32851",
+        "32864",
+        "32912",
+    ];
+
+    let mut effect_index = 0;
+
     let config = camera.config().wait().unwrap();
     let image_quality = camera
         .config_key::<RadioWidget>("imagequality")
@@ -55,6 +78,13 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
         .unwrap();
     image_quality.set_choice("Fine").unwrap();
     camera.set_config(&image_quality).wait().unwrap();
+
+    let picture_effect = camera
+        .config_key::<RadioWidget>("d21b")
+        .wait()
+        .unwrap();
+    picture_effect.set_choice(effects[effect_index]).unwrap();
+    camera.set_config(&picture_effect).wait().unwrap();
 
     // let shutter_speed = camera.config_key::<RadioWidget>("shutterspeed").wait().unwrap();;
     // shutter_speed.set_choice("1/10").unwrap();
@@ -79,6 +109,11 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
                     ImageMessage::Captured(path)
                 });
                 image_tx.send(msg).unwrap();
+            }
+            Some(CameraCommand::CycleEffect) => {
+                effect_index = (effect_index + 1) % effects.len();
+                picture_effect.set_choice(effects[effect_index]).unwrap();
+                camera.set_config(&picture_effect).wait().unwrap();
             }
             Some(CameraCommand::FetchImage(path)) => {
                 sleep(Duration::from_secs(1));
@@ -130,7 +165,7 @@ fn capture_image(camera: &Camera) -> Option<CameraFilePath> {
         {
             CameraEvent::NewFile(path) => return Some(path),
             CameraEvent::Timeout => {}
-            event => println!("Ignoring camera event while waiting for capture: {event:?}"),
+            _ => {}
         }
     }
 }
@@ -139,7 +174,7 @@ fn drain_camera_events(camera: &Camera) -> Option<()> {
     loop {
         match camera.wait_event(Duration::ZERO).wait().ok()? {
             CameraEvent::Timeout => return Some(()),
-            event => println!("Discarding stale camera event before capture: {event:?}"),
+            _ => {}
         }
     }
 }

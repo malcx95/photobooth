@@ -67,6 +67,7 @@ enum RXMessage {
 
 enum ButtonPress {
     TakePhoto,
+    CycleEffect,
     Accept,
     Reject,
 }
@@ -154,6 +155,9 @@ async fn main() -> Result<(), String> {
                         state = ProgramState::Countdown;
                         countdown_start = Instant::now();
                     }
+                    Some(ButtonPress::CycleEffect) => {
+                        camera_tx.send(CameraCommand::CycleEffect).unwrap();
+                    }
                     _ => {
                         camera_tx.send(CameraCommand::CapturePreview).unwrap();
                     }
@@ -240,7 +244,7 @@ fn init_buttons() -> Vec<Button> {
     vec![
         Button {pin: BIG_WHITE_BUTTON, color: GRAY, text: String::from("Capture"), enabled: false},
         Button {pin: RED_BUTTON,       color: RED, text: String::from("Reject"), enabled: false},
-        Button {pin: BLUE_BUTTON,      color: BLUE, text: String::from("Blue"), enabled: false},
+        Button {pin: BLUE_BUTTON,      color: BLUE, text: String::from("Change effect"), enabled: false},
         Button {pin: WHITE_BUTTON,     color: WHITE, text: String::from("White"), enabled: false},
         Button {pin: YELLOW_BUTTON,    color: YELLOW, text: String::from("Yellow"), enabled: false},
         Button {pin: GREEN_BUTTON,     color: GREEN, text: String::from("Accept"), enabled: false},
@@ -278,7 +282,7 @@ fn send_ledstrip_message(port: &mut Box<dyn SerialPort>, state: &ProgramState, c
 
 fn update_enabled_buttons(buttons: &mut Vec<Button>, state: &ProgramState) {
     let enabled_pins = match state {
-        ProgramState::Preview => vec![BIG_WHITE_BUTTON],
+        ProgramState::Preview => vec![BIG_WHITE_BUTTON, BLUE_BUTTON],
         ProgramState::Countdown => vec![RED_BUTTON],
         ProgramState::Capturing => vec![],
         ProgramState::FetchingImage => vec![],
@@ -325,6 +329,8 @@ fn read_buttons(port: &mut Box<dyn SerialPort>) -> Option<ButtonPress> {
                 Some(ButtonPress::Reject)
             } else if button == GREEN_BUTTON {
                 Some(ButtonPress::Accept)
+            } else if button == BLUE_BUTTON {
+                Some(ButtonPress::CycleEffect)
             } else {
                 None
             }
