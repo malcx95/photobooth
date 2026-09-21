@@ -1,18 +1,17 @@
 mod camera;
 mod timer;
 mod imagescore;
+mod ui;
+mod button;
+mod serial;
 
 use core::panic;
-use gphoto2::Context;
-use gphoto2::camera::Camera;
 use gphoto2::file::CameraFilePath;
-use gphoto2::widget::Widget;
 use image::EncodableLayout;
 use image::buffer::ConvertBuffer;
 use image::{DynamicImage, ImageEncoder, ImageReader, RgbaImage};
 use macroquad::prelude::*;
 use serialport::{SerialPort, SerialPortInfo};
-use std::f32::consts::PI;
 use std::fmt::write;
 use std::fs::File;
 use std::io::Cursor;
@@ -25,27 +24,7 @@ use std::time::{self, Duration, Instant};
 use crate::camera::{CameraCommand, ImageMessage};
 use crate::imagescore::{ScoredImage, load_scores, save_scores, score};
 
-const CONTROLLER_START_WORD: u8 = 0xEE;
-const HUB_START_WORD: u8 = 0x41;
 const IMAGE_SAVE_DIRECTORY: &str = "/home/malcolm/photoboothimages";
-
-const CONTROLLER_BAUD_RATE: u32 = 9600;
-
-const CONNECT_ACK_MSG_TYPE: u8 = 0xAE;
-const BUTTON_PRESS_MSG_TYPE: u8 = 0xBB;
-
-const CONNECT_MSG_TYPE: u8 = 0xDE;
-const SET_LIGHT_STATE_MSG_TYPE: u8 = 0x4A;
-const SET_ENABLED_BUTTONS_MSG_TYPE: u8 = 0x4B;
-
-const MSG_TIMEOUT: u64 = 400;
-
-const BIG_WHITE_BUTTON: u8 = 6;
-const RED_BUTTON: u8 = 7;
-const BLUE_BUTTON: u8 = 8;
-const WHITE_BUTTON: u8 = 9;
-const YELLOW_BUTTON: u8 = 20;
-const GREEN_BUTTON: u8 = 21;
 
 const IMAGE_WIDTH: f32 = 1024.0;
 const IMAGE_HEIGHT: f32 = 680.0;
@@ -56,24 +35,6 @@ const LED_STATE_COUNTDOWN_2: u8 = 3;
 const LED_STATE_COUNTDOWN_3: u8 = 4;
 const LED_STATE_CAPTURING: u8 = 5;
 
-enum TXMessage {
-    Connect,
-    SetLightState(u8),
-    SetEnabledButtons(u8),
-}
-
-enum RXMessage {
-    Nothing,
-    ButtonPress(u8),
-}
-
-enum ButtonPress {
-    TakePhoto,
-    CycleEffect,
-    Accept,
-    Reject,
-}
-
 enum ProgramState {
     Preview,
     Countdown,
@@ -82,12 +43,6 @@ enum ProgramState {
     Review,
 }
 
-struct Button {
-    pub pin: u8,
-    pub color: Color,
-    pub text: String,
-    pub enabled: bool,
-}
 
 #[macroquad::main("photobooth-hub")]
 async fn main() -> Result<(), String> {
@@ -102,7 +57,7 @@ async fn main() -> Result<(), String> {
         camera::camera_loop(image_tx, camera_rx);
     });
 
-    let mut port = find_port(ignore_controller);
+    let mut port = serial::find_port(ignore_controller);
 
     println!("Connecting to camera...");
     match image_rx.recv().unwrap() {
@@ -116,26 +71,26 @@ async fn main() -> Result<(), String> {
     }
 
     let mut state = ProgramState::Preview;
-    send_serial_message(&mut port, TXMessage::SetLightState(LED_STATE_STANDBY));
+    serial::send_serial_message(&mut port, serial::TXMessage::SetLightState(LED_STATE_STANDBY));
 
     let mut countdown_start = Instant::now();
 
     camera_tx.send(CameraCommand::CapturePreview).unwrap();
     let mut curr_preview_image = RgbaImage::new(1000, 1000);
     let mut last_captured_image = RgbaImage::new(1000, 1000);
-    let mut preview_texture = DisplayTexture::new(&curr_preview_image);
-    let mut captured_texture = DisplayTexture::new(&last_captured_image);
+    let mut preview_texture = ui::DisplayTexture::new(&curr_preview_image);
+    let mut captured_texture = ui::DisplayTexture::new(&last_captured_image);
     let mut last_captured_path: CameraFilePath;
 
     let mut buttons_timer = timer::Timer::new(100);
-    let mut buttons = init_buttons();
+    let mut buttons = button::init_buttons();
 
     let mut ledstrip_timer = timer::Timer::new(150);
 
     let mut scores = load_scores();
 
     loop {
-        let button_press = read_buttons(&mut port);
+        let button_press = button::read_buttons(&mut port);
         let countdown_secs_left = 3.0 - countdown_start.elapsed().as_secs_f32();
         update_enabled_buttons(&mut buttons, &state);
 
@@ -159,11 +114,11 @@ async fn main() -> Result<(), String> {
                 };
 
                 match button_press {
-                    Some(ButtonPress::TakePhoto) => {
+                    Some(button::ButtonPress::TakePhoto) => {
                         state = ProgramState::Countdown;
                         countdown_start = Instant::now();
                     }
-                    Some(ButtonPress::CycleEffect) => {
+                    Some(button::ButtonPress::CycleEffect) => {
                         camera_tx.send(CameraCommand::CycleEffect).unwrap();
                     }
                     _ => {
@@ -171,8 +126,8 @@ async fn main() -> Result<(), String> {
                     }
                 }
 
-                draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
-                draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons);
+                ui::draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
+                ui::draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons);
             }
             ProgramState::Countdown => {
                 camera_tx.send(CameraCommand::CapturePreview).unwrap();
@@ -184,12 +139,12 @@ async fn main() -> Result<(), String> {
                     }
                     _ => {}
                 };
-                draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
+                ui::draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 if countdown_secs_left <= 0.0 {
                     state = ProgramState::Capturing;
                     camera_tx.send(CameraCommand::CaptureImage).unwrap();
                 } else {
-                    draw_countdown(countdown_secs_left, IMAGE_HEIGHT, IMAGE_WIDTH);
+                    ui::draw_countdown(countdown_secs_left, IMAGE_HEIGHT, IMAGE_WIDTH);
                 }
             }
             ProgramState::Capturing => {
@@ -205,8 +160,8 @@ async fn main() -> Result<(), String> {
                     }
                     _ => {}
                 };
-                draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
-                draw_cheese_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
+                ui::draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
+                ui::draw_cheese_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
             }
             ProgramState::FetchingImage => {
                 let fetch_response = image_rx.try_recv();
@@ -224,20 +179,20 @@ async fn main() -> Result<(), String> {
                     }
                     _ => {}
                 };
-                draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
-                draw_loading_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
+                ui::draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
+                ui::draw_loading_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
             }
             ProgramState::Review => {
-                draw_image(&captured_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
-                draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons);
-                draw_review_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
+                ui::draw_image(&captured_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
+                ui::draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons);
+                ui::draw_review_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
 
                 match button_press {
-                    Some(ButtonPress::Accept) => {
+                    Some(button::ButtonPress::Accept) => {
                         state = ProgramState::Preview;
                         save_image(&last_captured_image, &mut scores);
                     }
-                    Some(ButtonPress::Reject) => {
+                    Some(button::ButtonPress::Reject) => {
                         state = ProgramState::Preview;
                     }
                     _ => {}
@@ -248,23 +203,12 @@ async fn main() -> Result<(), String> {
     }
 }
 
-fn init_buttons() -> Vec<Button> {
-    vec![
-        Button {pin: BIG_WHITE_BUTTON, color: GRAY, text: String::from("Capture"), enabled: false},
-        Button {pin: RED_BUTTON,       color: RED, text: String::from("Reject"), enabled: false},
-        Button {pin: BLUE_BUTTON,      color: BLUE, text: String::from("Change effect"), enabled: false},
-        Button {pin: WHITE_BUTTON,     color: WHITE, text: String::from("White"), enabled: false},
-        Button {pin: YELLOW_BUTTON,    color: YELLOW, text: String::from("Yellow"), enabled: false},
-        Button {pin: GREEN_BUTTON,     color: GREEN, text: String::from("Accept"), enabled: false},
-    ]
-}
-
-fn send_buttons_enabled_message(port: &mut Box<dyn SerialPort>, buttons: &mut Vec<Button>) {
+fn send_buttons_enabled_message(port: &mut Box<dyn SerialPort>, buttons: &mut Vec<button::Button>) {
     let mut bitmask: u8 = 0;
     for (i, button) in buttons.iter().enumerate() {
         bitmask |= (button.enabled as u8) << i;
     }
-    let _ = send_serial_message(port, TXMessage::SetEnabledButtons(bitmask));
+    let _ = serial::send_serial_message(port, serial::TXMessage::SetEnabledButtons(bitmask));
 }
 
 fn send_ledstrip_message(port: &mut Box<dyn SerialPort>, state: &ProgramState, countdown: f32) {
@@ -285,16 +229,16 @@ fn send_ledstrip_message(port: &mut Box<dyn SerialPort>, state: &ProgramState, c
         ProgramState::FetchingImage => LED_STATE_STANDBY,
         ProgramState::Review => LED_STATE_STANDBY,
     };
-    let _ = send_serial_message(port, TXMessage::SetLightState(light_state));
+    let _ = serial::send_serial_message(port, serial::TXMessage::SetLightState(light_state));
 }
 
-fn update_enabled_buttons(buttons: &mut Vec<Button>, state: &ProgramState) {
+fn update_enabled_buttons(buttons: &mut Vec<button::Button>, state: &ProgramState) {
     let enabled_pins = match state {
-        ProgramState::Preview => vec![BIG_WHITE_BUTTON, BLUE_BUTTON],
-        ProgramState::Countdown => vec![RED_BUTTON],
+        ProgramState::Preview => vec![button::BIG_WHITE_BUTTON, button::BLUE_BUTTON],
+        ProgramState::Countdown => vec![button::RED_BUTTON],
         ProgramState::Capturing => vec![],
         ProgramState::FetchingImage => vec![],
-        ProgramState::Review => vec![RED_BUTTON, GREEN_BUTTON],
+        ProgramState::Review => vec![button::RED_BUTTON, button::GREEN_BUTTON],
     };
 
     for button in buttons.iter_mut() {
@@ -329,148 +273,7 @@ fn save_image(image: &RgbaImage, scores: &mut Vec<ScoredImage>) {
     save_scores(scores);
 }
 
-fn read_buttons(port: &mut Box<dyn SerialPort>) -> Option<ButtonPress> {
-    let press_opt = match read_serial(port) {
-        RXMessage::Nothing => None,
-        RXMessage::ButtonPress(button) => {
-            if button == BIG_WHITE_BUTTON {
-                Some(ButtonPress::TakePhoto)
-            } else if button == RED_BUTTON {
-                Some(ButtonPress::Reject)
-            } else if button == GREEN_BUTTON {
-                Some(ButtonPress::Accept)
-            } else if button == BLUE_BUTTON {
-                Some(ButtonPress::CycleEffect)
-            } else {
-                None
-            }
-        }
-    };
 
-    match press_opt {
-        Some(button_press) => Some(button_press),
-        None => {
-            if is_key_down(KeyCode::T) {
-                Some(ButtonPress::TakePhoto)
-            } else if is_key_down(KeyCode::A) {
-                Some(ButtonPress::Accept)
-            } else if is_key_down(KeyCode::R) {
-                Some(ButtonPress::Reject)
-            } else {
-                None
-            }
-        }
-    }
-}
-
-fn read_serial(port: &mut Box<dyn SerialPort>) -> RXMessage {
-    if port.bytes_to_read().unwrap() < 3 {
-        return RXMessage::Nothing;
-    }
-
-    let mut serial_buf = [0; 3];
-    let read_bytes = match port.read_exact(serial_buf.as_mut_slice()) {
-        Ok(b) => b,
-        Err(_) => {
-            println!("Failed to read message");
-            return RXMessage::Nothing;
-        }
-    };
-
-    if serial_buf[0] == CONTROLLER_START_WORD {
-        if serial_buf[1] == BUTTON_PRESS_MSG_TYPE {
-            return RXMessage::ButtonPress(serial_buf[2]);
-        }
-    }
-    RXMessage::Nothing
-}
-
-fn find_port(ignore_controller: bool) -> Box<dyn SerialPort> {
-    let ports = serialport::available_ports().expect("No serial ports found!");
-    for p in ports {
-        let mut port = match serialport::new(&p.port_name, CONTROLLER_BAUD_RATE)
-            .timeout(Duration::from_millis(MSG_TIMEOUT))
-            .open()
-        {
-            Ok(opened) => opened,
-            Err(_) => continue,
-        };
-
-        if ignore_controller {
-            return port;
-        }
-
-        println!("Trying port {}", &p.port_name);
-
-        send_serial_message(&mut port, TXMessage::Connect);
-        println!("This port might respond");
-
-        let mut serial_buf = [0; 3];
-        match port.read_exact(serial_buf.as_mut_slice()) {
-            Ok(b) => b,
-            Err(_) => {
-                println!("This port did not respond properly");
-                continue;
-            }
-        };
-
-        if serial_buf[1] == CONNECT_ACK_MSG_TYPE {
-            return port;
-        }
-    }
-    panic!("Found no ports!");
-}
-
-fn send_serial_message(port: &mut Box<dyn SerialPort>, message: TXMessage) {
-    let message = match message {
-        TXMessage::Connect => [1, 1, 1, HUB_START_WORD, CONNECT_MSG_TYPE, 0],
-        TXMessage::SetLightState(state) => [1, 1, 1, HUB_START_WORD, SET_LIGHT_STATE_MSG_TYPE, state],
-        TXMessage::SetEnabledButtons(state) => [1, 1, 1, HUB_START_WORD, SET_ENABLED_BUTTONS_MSG_TYPE, state],
-    };
-    let _ = port.write(&message);
-}
-
-fn draw_countdown(count: f32, image_height: f32, image_width: f32) {
-    let count_digit = count.ceil() as i32;
-    let digit_str = format!("{}", count_digit);
-    let font_size = 160.0 * (-(count * 2.0 * PI).sin() + 2.0) / 2.0;
-    // let font_size = 260.0 * (count % 1.0 + 0.3);
-
-    let center = get_text_center(&digit_str, Option::None, font_size as u16, 1.0, 0.0);
-    draw_text(
-        &digit_str,
-        image_width / 2.0 - center.x / 2.0,
-        image_height / 2.0 - center.y / 2.0,
-        font_size,
-        YELLOW,
-    );
-}
-
-fn draw_buttons(image_height: f32, image_width: f32, buttons: &Vec<Button>) {
-    let button_x = image_width + 100.0;
-    let label_x = button_x + 60.0;
-    let button_y = 100.0;
-    let button_y_separation = 100.0;
-    let font_size = 40.0;
-
-    for (i, button) in buttons.into_iter().enumerate() {
-        if button.enabled {
-            draw_circle(
-                button_x,
-                button_y + (i as f32) * button_y_separation,
-                40.0,
-                button.color,
-            );
-            draw_text(
-                button.text.as_str(),
-                label_x,
-                button_y + (i as f32) * button_y_separation + font_size / 4.0,
-                font_size,
-                WHITE,
-            );
-        }
-    }
-}
 
 // fn capture_image(camera: &Camera) {
 //     let file = camera.capture_image().wait().unwrap();
@@ -479,84 +282,3 @@ fn draw_buttons(image_height: f32, image_width: f32, buttons: &Vec<Button>) {
 //         .download_to(&file.folder(), &file.name(), Path::new("/tmp/image.jpg"))
 //         .wait();
 // }
-
-struct DisplayTexture {
-    texture: Texture2D,
-    width: u32,
-    height: u32,
-}
-
-impl DisplayTexture {
-    fn new(image: &RgbaImage) -> Self {
-        let width =
-            u16::try_from(image.width()).expect("Image width exceeds Macroquad's texture limit");
-        let height =
-            u16::try_from(image.height()).expect("Image height exceeds Macroquad's texture limit");
-
-        Self {
-            texture: Texture2D::from_rgba8(width, height, image.as_raw()),
-            width: image.width(),
-            height: image.height(),
-        }
-    }
-
-    fn update(&mut self, image: &RgbaImage) {
-        if self.width != image.width() || self.height != image.height() {
-            *self = Self::new(image);
-        } else {
-            self.texture
-                .update_from_bytes(self.width, self.height, image.as_raw());
-        }
-    }
-}
-
-fn draw_image(texture: &Texture2D, target_height: f32, target_width: f32) {
-    draw_texture_ex(
-        texture,
-        0.,
-        0.,
-        WHITE,
-        DrawTextureParams {
-            dest_size: Some(vec2(target_width, target_height)),
-            ..Default::default()
-        },
-    );
-}
-
-fn draw_cheese_frame(image_height: f32, image_width: f32) {
-    let font_size = 400.0;
-    let center = get_text_center("CHEESE!", Option::None, font_size as u16, 1.0, 0.0);
-    draw_text(
-        "CHEESE!",
-        image_width / 2.0 - center.x / 2.0,
-        image_height / 2.0 - center.y / 2.0,
-        font_size,
-        YELLOW,
-    );
-}
-
-fn draw_loading_frame(image_height: f32, image_width: f32) {
-    let font_size = 400.0;
-
-    let center = get_text_center("Loading...", Option::None, font_size as u16, 1.0, 0.0);
-    draw_text(
-        "Loading...",
-        image_width / 2.0 - center.x / 2.0,
-        image_height / 2.0 - center.y / 2.0,
-        font_size,
-        YELLOW,
-    );
-}
-
-fn draw_review_frame(image_height: f32, image_width: f32) {
-    let font_size = 400.0;
-
-    let center = get_text_center("OK?", Option::None, font_size as u16, 1.0, 0.0);
-    draw_text(
-        "OK?",
-        image_width / 2.0 - center.x / 2.0,
-        image_height / 2.0 - center.y / 2.0,
-        font_size,
-        YELLOW,
-    );
-}
