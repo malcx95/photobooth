@@ -1,5 +1,6 @@
 mod camera;
 mod timer;
+mod imagescore;
 
 use core::panic;
 use gphoto2::Context;
@@ -18,10 +19,11 @@ use std::io::Cursor;
 use std::io::prelude::*;
 use std::path::Path;
 use std::sync::mpsc;
-use std::thread;
+use std::{env, thread};
 use std::time::{self, Duration, Instant};
 
 use crate::camera::{CameraCommand, ImageMessage};
+use crate::imagescore::{ScoredImage, load_scores, save_scores, score};
 
 const CONTROLLER_START_WORD: u8 = 0xEE;
 const HUB_START_WORD: u8 = 0x41;
@@ -89,6 +91,10 @@ struct Button {
 
 #[macroquad::main("photobooth-hub")]
 async fn main() -> Result<(), String> {
+    let args: Vec<String> = env::args().collect();
+
+    let ignore_controller = args.len() > 1 && args[1] == "-f";
+
     let (image_tx, image_rx) = mpsc::channel::<camera::ImageMessage>();
     let (camera_tx, camera_rx) = mpsc::channel::<camera::CameraCommand>();
 
@@ -96,7 +102,7 @@ async fn main() -> Result<(), String> {
         camera::camera_loop(image_tx, camera_rx);
     });
 
-    let mut port = find_port();
+    let mut port = find_port(ignore_controller);
 
     println!("Connecting to camera...");
     match image_rx.recv().unwrap() {
@@ -125,6 +131,8 @@ async fn main() -> Result<(), String> {
     let mut buttons = init_buttons();
 
     let mut ledstrip_timer = timer::Timer::new(150);
+
+    let mut scores = load_scores();
 
     loop {
         let button_press = read_buttons(&mut port);
@@ -227,7 +235,7 @@ async fn main() -> Result<(), String> {
                 match button_press {
                     Some(ButtonPress::Accept) => {
                         state = ProgramState::Preview;
-                        save_image(&last_captured_image);
+                        save_image(&last_captured_image, &mut scores);
                     }
                     Some(ButtonPress::Reject) => {
                         state = ProgramState::Preview;
@@ -295,14 +303,12 @@ fn update_enabled_buttons(buttons: &mut Vec<Button>, state: &ProgramState) {
     }
 }
 
-fn save_image(image: &RgbaImage) {
-    println!("Saving image");
+fn save_image(image: &RgbaImage, scores: &mut Vec<ScoredImage>) {
     if let Err(error) = std::fs::create_dir_all(IMAGE_SAVE_DIRECTORY) {
         eprintln!("Failed to create image directory {IMAGE_SAVE_DIRECTORY}: {error}");
         return;
     }
 
-    println!("Saving image 2");
     let mut image_number = 1;
     let image_path = loop {
         let path = Path::new(IMAGE_SAVE_DIRECTORY).join(format!("{image_number:04}.jpg"));
@@ -312,11 +318,15 @@ fn save_image(image: &RgbaImage) {
         image_number += 1;
     };
 
-    println!("Saving image 3");
     let jpeg_image = DynamicImage::ImageRgba8(image.clone()).to_rgb8();
     if let Err(error) = jpeg_image.save_with_format(&image_path, image::ImageFormat::Jpeg) {
         eprintln!("Failed to save image to {}: {error}", image_path.display());
     }
+
+    let score = score(image);
+    scores.push(ScoredImage { path: image_path.to_str().unwrap().to_string(), score: score });
+
+    save_scores(scores);
 }
 
 fn read_buttons(port: &mut Box<dyn SerialPort>) -> Option<ButtonPress> {
@@ -375,7 +385,7 @@ fn read_serial(port: &mut Box<dyn SerialPort>) -> RXMessage {
     RXMessage::Nothing
 }
 
-fn find_port() -> Box<dyn SerialPort> {
+fn find_port(ignore_controller: bool) -> Box<dyn SerialPort> {
     let ports = serialport::available_ports().expect("No serial ports found!");
     for p in ports {
         let mut port = match serialport::new(&p.port_name, CONTROLLER_BAUD_RATE)
@@ -385,6 +395,10 @@ fn find_port() -> Box<dyn SerialPort> {
             Ok(opened) => opened,
             Err(_) => continue,
         };
+
+        if ignore_controller {
+            return port;
+        }
 
         println!("Trying port {}", &p.port_name);
 

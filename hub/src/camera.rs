@@ -71,13 +71,11 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
 
     let mut effect_index = 0;
 
-    let config = camera.config().wait().unwrap();
-    let image_quality = camera
-        .config_key::<RadioWidget>("imagequality")
-        .wait()
-        .unwrap();
-    image_quality.set_choice("Fine").unwrap();
-    camera.set_config(&image_quality).wait().unwrap();
+    let image_quality = get_camera_setting(&camera, "imagequality");
+    let picture_effect = get_camera_setting(&camera, "d21b");
+
+    set_camera_setting(&camera, &image_quality, "Fine");
+    set_camera_setting(&camera, &picture_effect, effects[effect_index]);
 
     let picture_effect = camera
         .config_key::<RadioWidget>("d21b")
@@ -90,6 +88,7 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
     // shutter_speed.set_choice("1/10").unwrap();
     // camera.set_config(&shutter_speed).wait().unwrap();
 
+    let config = camera.config().wait().unwrap();
     println!("{:#?}", config);
     image_tx.send(ImageMessage::CameraStarted).unwrap();
 
@@ -112,8 +111,7 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
             }
             Some(CameraCommand::CycleEffect) => {
                 effect_index = (effect_index + 1) % effects.len();
-                picture_effect.set_choice(effects[effect_index]).unwrap();
-                camera.set_config(&picture_effect).wait().unwrap();
+                set_camera_setting(&camera, &picture_effect, effects[effect_index]); // picture effect
             }
             Some(CameraCommand::FetchImage(path)) => {
                 sleep(Duration::from_secs(1));
@@ -232,4 +230,16 @@ fn capture_download_path() -> PathBuf {
         "photobooth-capture-{}-{timestamp}.jpg",
         std::process::id()
     ))
+}
+
+fn get_camera_setting(camera: &Camera, key: &str) -> RadioWidget {
+    camera
+        .config_key::<RadioWidget>(key)
+        .wait()
+        .unwrap()
+}
+
+fn set_camera_setting(camera: &Camera, setting: &RadioWidget, value: &str) {
+    setting.set_choice(value).unwrap();
+    camera.set_config(&setting).wait().unwrap()
 }
