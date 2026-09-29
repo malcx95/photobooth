@@ -13,7 +13,7 @@ use image::{DynamicImage, ImageEncoder, ImageReader, RgbaImage};
 use macroquad::prelude::*;
 use serialport::{SerialPort, SerialPortInfo};
 use std::fmt::write;
-use std::fs::File;
+use std::fs::{File, copy};
 use std::io::Cursor;
 use std::io::prelude::*;
 use std::path::Path;
@@ -41,6 +41,7 @@ enum ProgramState {
     Capturing,
     FetchingImage,
     Review,
+    Leaderboard,
 }
 
 
@@ -53,8 +54,15 @@ async fn main() -> Result<(), String> {
     let (image_tx, image_rx) = mpsc::channel::<camera::ImageMessage>();
     let (camera_tx, camera_rx) = mpsc::channel::<camera::CameraCommand>();
 
+    let (imagescore_tx, imagescore_rx) = mpsc::channel::<u32>();
+    let (captured_tx, captured_rx) = mpsc::channel::<RgbaImage>();
+
     thread::spawn(move || {
         camera::camera_loop(image_tx, camera_rx);
+    });
+
+    thread::spawn(move || {
+        imagescore::score_loop(imagescore_tx, captured_rx);
     });
 
     let mut port = serial::find_port(ignore_controller);
@@ -89,6 +97,8 @@ async fn main() -> Result<(), String> {
 
     let mut scores = load_scores();
 
+    let mut current_score: Option<u32> = None;
+
     loop {
         let button_press = button::read_buttons(&mut port);
         let countdown_secs_left = 3.0 - countdown_start.elapsed().as_secs_f32();
@@ -121,6 +131,9 @@ async fn main() -> Result<(), String> {
                     Some(button::ButtonPress::CycleEffect) => {
                         camera_tx.send(CameraCommand::CycleEffect).unwrap();
                     }
+                    // Some(button::ButtonPress::Leaderboard) => {
+                    //     state = ProgramState::Leaderboard;
+                    // }
                     _ => {
                         camera_tx.send(CameraCommand::CapturePreview).unwrap();
                     }
@@ -167,10 +180,10 @@ async fn main() -> Result<(), String> {
                 let fetch_response = image_rx.try_recv();
                 match fetch_response {
                     Ok(ImageMessage::FetchedImage(image, path)) => {
-                        println!("Got image");
                         last_captured_image = image;
                         captured_texture.update(&last_captured_image);
                         last_captured_path = path;
+                        captured_tx.send(last_captured_image.clone()).unwrap();
                         state = ProgramState::Review;
                     }
                     Ok(ImageMessage::FetchFailed) => {
@@ -183,9 +196,13 @@ async fn main() -> Result<(), String> {
                 ui::draw_loading_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
             }
             ProgramState::Review => {
+                current_score = match imagescore_rx.try_recv() {
+                    Ok(score) => Some(score),
+                    _ => current_score,
+                };
                 ui::draw_image(&captured_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 ui::draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons);
-                ui::draw_review_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
+                ui::draw_review_frame(IMAGE_HEIGHT, IMAGE_WIDTH, current_score);
 
                 match button_press {
                     Some(button::ButtonPress::Accept) => {
@@ -197,6 +214,9 @@ async fn main() -> Result<(), String> {
                     }
                     _ => {}
                 }
+            }
+            ProgramState::Leaderboard => {
+                state = ProgramState::Preview;
             }
         }
         next_frame().await;
@@ -228,17 +248,19 @@ fn send_ledstrip_message(port: &mut Box<dyn SerialPort>, state: &ProgramState, c
         ProgramState::Capturing => LED_STATE_CAPTURING,
         ProgramState::FetchingImage => LED_STATE_STANDBY,
         ProgramState::Review => LED_STATE_STANDBY,
+        ProgramState::Leaderboard => LED_STATE_STANDBY,
     };
     let _ = serial::send_serial_message(port, serial::TXMessage::SetLightState(light_state));
 }
 
 fn update_enabled_buttons(buttons: &mut Vec<button::Button>, state: &ProgramState) {
     let enabled_pins = match state {
-        ProgramState::Preview => vec![button::BIG_WHITE_BUTTON, button::BLUE_BUTTON],
+        ProgramState::Preview => vec![button::BIG_WHITE_BUTTON, button::BLUE_BUTTON, button::WHITE_BUTTON],
         ProgramState::Countdown => vec![button::RED_BUTTON],
         ProgramState::Capturing => vec![],
         ProgramState::FetchingImage => vec![],
         ProgramState::Review => vec![button::RED_BUTTON, button::GREEN_BUTTON],
+        ProgramState::Leaderboard => vec![button::WHITE_BUTTON],
     };
 
     for button in buttons.iter_mut() {

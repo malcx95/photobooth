@@ -15,6 +15,7 @@ pub enum ButtonPress {
     CycleEffect,
     Accept,
     Reject,
+    Leaderboard,
 }
 
 pub struct Button {
@@ -46,6 +47,8 @@ pub fn read_buttons(port: &mut Box<dyn SerialPort>) -> Option<ButtonPress> {
             } else if button == GREEN_BUTTON {
                 Some(ButtonPress::Accept)
             } else if button == BLUE_BUTTON {
+                Some(ButtonPress::CycleEffect)
+            } else if button == WHITE_BUTTON {
                 Some(ButtonPress::CycleEffect)
             } else {
                 None
