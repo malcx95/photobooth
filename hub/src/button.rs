@@ -49,7 +49,7 @@ pub fn read_buttons(port: &mut Box<dyn SerialPort>) -> Option<ButtonPress> {
             } else if button == BLUE_BUTTON {
                 Some(ButtonPress::CycleEffect)
             } else if button == WHITE_BUTTON {
-                Some(ButtonPress::CycleEffect)
+                Some(ButtonPress::Leaderboard)
             } else {
                 None
             }

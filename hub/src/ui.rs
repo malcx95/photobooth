@@ -74,18 +74,17 @@ pub fn draw_loading_frame(image_height: f32, image_width: f32) {
 }
 
 pub fn draw_review_frame(image_height: f32, image_width: f32, current_score: Option<u32>) {
-    let font_size = 400.0;
+    let font_size = 150.0;
 
     let score_text = match current_score {
         Some(score) => format!("Score: {}", score),
         None => String::from("Loading score..."),
     };
 
-    let center = get_text_center("OK?", Option::None, font_size as u16, 1.0, 0.0);
     draw_text(
-        "OK?",
-        image_width / 2.0 - center.x / 2.0,
-        image_height / 2.0 - center.y / 2.0,
+        score_text.as_str(),
+        0.,
+        image_height,
         font_size,
         YELLOW,
     );

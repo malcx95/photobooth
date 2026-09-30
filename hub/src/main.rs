@@ -11,7 +11,7 @@ use image::EncodableLayout;
 use image::buffer::ConvertBuffer;
 use image::{DynamicImage, ImageEncoder, ImageReader, RgbaImage};
 use macroquad::prelude::*;
-use serialport::{SerialPort, SerialPortInfo};
+use serialport::{SerialPort, SerialPortInfo, new};
 use std::fmt::write;
 use std::fs::{File, copy};
 use std::io::Cursor;
@@ -88,6 +88,7 @@ async fn main() -> Result<(), String> {
     let mut last_captured_image = RgbaImage::new(1000, 1000);
     let mut preview_texture = ui::DisplayTexture::new(&curr_preview_image);
     let mut captured_texture = ui::DisplayTexture::new(&last_captured_image);
+    let mut leaderboard_texture = ui::DisplayTexture::new(&last_captured_image);
     let mut last_captured_path: CameraFilePath;
 
     let mut buttons_timer = timer::Timer::new(100);
@@ -96,8 +97,11 @@ async fn main() -> Result<(), String> {
     let mut ledstrip_timer = timer::Timer::new(150);
 
     let mut scores = load_scores();
+    scores.sort_by_key(|im| { im.score });
 
     let mut current_score: Option<u32> = None;
+
+    let mut leaderboard_index = 0;
 
     loop {
         let button_press = button::read_buttons(&mut port);
@@ -131,9 +135,12 @@ async fn main() -> Result<(), String> {
                     Some(button::ButtonPress::CycleEffect) => {
                         camera_tx.send(CameraCommand::CycleEffect).unwrap();
                     }
-                    // Some(button::ButtonPress::Leaderboard) => {
-                    //     state = ProgramState::Leaderboard;
-                    // }
+                    Some(button::ButtonPress::Leaderboard) => {
+                        if scores.len() > 0 {
+                            state = ProgramState::Leaderboard;
+                            update_leaderboard_image(&scores[leaderboard_index], &mut leaderboard_texture, &mut current_score);
+                        }
+                    }
                     _ => {
                         camera_tx.send(CameraCommand::CapturePreview).unwrap();
                     }
@@ -206,8 +213,10 @@ async fn main() -> Result<(), String> {
 
                 match button_press {
                     Some(button::ButtonPress::Accept) => {
-                        state = ProgramState::Preview;
-                        save_image(&last_captured_image, &mut scores);
+                        if let Some(score) = current_score {
+                            state = ProgramState::Preview;
+                            save_image(&last_captured_image, &mut scores, score);
+                        }
                     }
                     Some(button::ButtonPress::Reject) => {
                         state = ProgramState::Preview;
@@ -216,7 +225,31 @@ async fn main() -> Result<(), String> {
                 }
             }
             ProgramState::Leaderboard => {
-                state = ProgramState::Preview;
+                match button_press {
+                    Some(button::ButtonPress::Accept) => {
+                        leaderboard_index = if leaderboard_index == 0 {
+                            scores.len() - 1
+                        } else {
+                            leaderboard_index - 1
+                        };
+                        if scores.len() > 0 {
+                            update_leaderboard_image(&scores[leaderboard_index], &mut leaderboard_texture, &mut current_score);
+                        }
+                    }
+                    Some(button::ButtonPress::Reject) => {
+                        leaderboard_index = (leaderboard_index + 1) % scores.len();
+                        if scores.len() > 0 {
+                            update_leaderboard_image(&scores[leaderboard_index], &mut leaderboard_texture, &mut current_score);
+                        }
+                    }
+                    Some(button::ButtonPress::Leaderboard) => {
+                        state = ProgramState::Preview;
+                    }
+                    _ => { }
+                }
+                ui::draw_image(&leaderboard_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
+                ui::draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons);
+                ui::draw_review_frame(IMAGE_HEIGHT, IMAGE_WIDTH, current_score);
             }
         }
         next_frame().await;
@@ -260,7 +293,7 @@ fn update_enabled_buttons(buttons: &mut Vec<button::Button>, state: &ProgramStat
         ProgramState::Capturing => vec![],
         ProgramState::FetchingImage => vec![],
         ProgramState::Review => vec![button::RED_BUTTON, button::GREEN_BUTTON],
-        ProgramState::Leaderboard => vec![button::WHITE_BUTTON],
+        ProgramState::Leaderboard => vec![button::WHITE_BUTTON, button::RED_BUTTON, button::GREEN_BUTTON],
     };
 
     for button in buttons.iter_mut() {
@@ -269,7 +302,7 @@ fn update_enabled_buttons(buttons: &mut Vec<button::Button>, state: &ProgramStat
     }
 }
 
-fn save_image(image: &RgbaImage, scores: &mut Vec<ScoredImage>) {
+fn save_image(image: &RgbaImage, scores: &mut Vec<ScoredImage>, current_score: u32) {
     if let Err(error) = std::fs::create_dir_all(IMAGE_SAVE_DIRECTORY) {
         eprintln!("Failed to create image directory {IMAGE_SAVE_DIRECTORY}: {error}");
         return;
@@ -289,12 +322,30 @@ fn save_image(image: &RgbaImage, scores: &mut Vec<ScoredImage>) {
         eprintln!("Failed to save image to {}: {error}", image_path.display());
     }
 
-    let score = score(image);
-    scores.push(ScoredImage { path: image_path.to_str().unwrap().to_string(), score: score });
+    scores.push(ScoredImage { path: image_path.to_str().unwrap().to_string(), score: current_score });
 
+    scores.sort_by_key(|im| { im.score });
     save_scores(scores);
 }
 
+
+fn load_image(path: &str) -> Option<RgbaImage> {
+    let decoded = ImageReader::open(path).ok()?.with_guessed_format().ok()?.decode().ok()?;
+    let converted = decoded.into_rgba8();
+    Some(converted)
+}
+
+fn update_leaderboard_image(scored_image: &ScoredImage, leaderboard_texture: &mut ui::DisplayTexture, current_score: &mut Option<u32>) {
+    let image = load_image(scored_image.path.as_str());
+    if let Some(im) = image {
+        *current_score = Some(scored_image.score);
+        leaderboard_texture.update(&im);
+    }
+    else
+    {
+        *current_score = None;
+    }
+}
 
 
 // fn capture_image(camera: &Camera) {
