@@ -27,4 +27,13 @@ impl Timer {
             false
         }
     }
+
+    pub fn progress(&self) -> f32 {
+        if self.has_elapsed() {
+            1.0
+        } else {
+            let elapsed = (Instant::now() - self.start).as_millis() as f32;
+            elapsed / (self.interval_ms as f32)
+        }
+    }
 }

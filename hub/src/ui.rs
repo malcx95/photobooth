@@ -1,9 +1,8 @@
-use macroquad::prelude::*;
 use image::{DynamicImage, ImageEncoder, ImageReader, RgbaImage};
+use macroquad::prelude::*;
 use std::f32::consts::PI;
 
 use crate::button;
-
 
 pub struct DisplayTexture {
     pub texture: Texture2D,
@@ -13,10 +12,8 @@ pub struct DisplayTexture {
 
 impl DisplayTexture {
     pub fn new(image: &RgbaImage) -> Self {
-        let width =
-            u16::try_from(image.width()).unwrap();
-        let height =
-            u16::try_from(image.height()).unwrap();
+        let width = u16::try_from(image.width()).unwrap();
+        let height = u16::try_from(image.height()).unwrap();
 
         Self {
             texture: Texture2D::from_rgba8(width, height, image.as_raw()),
@@ -73,36 +70,63 @@ pub fn draw_loading_frame(image_height: f32, image_width: f32) {
     );
 }
 
-pub fn draw_review_frame(image_height: f32, image_width: f32, current_score: Option<u32>) {
-    let font_size = 150.0;
-
-    let score_text = match current_score {
-        Some(score) => format!("Score: {}", score),
-        None => String::from("Loading score..."),
+pub fn draw_score_reveal(image_height: f32, image_width: f32, score: u32, progress: f32, rank: usize) {
+    const FONT_SIZE: u16 = 150;
+    let rank_text = if rank == 1 {
+        String::from("You are number 1!")
+    } else {
+        format!("Rank: {}", rank)
     };
+    let score_text = format!("Score: {}, {}", score, rank_text);
+    let scale = (progress * 4.0).min(1.0);
+    let center = get_text_center(score_text.as_str(), Option::None, FONT_SIZE, scale, 0.0);
 
-    draw_text(
+    draw_text_ex(
         score_text.as_str(),
-        0.,
-        image_height,
-        font_size,
-        YELLOW,
+        image_width / 2.0 - center.x / 2.0 - FONT_SIZE as f32,
+        image_height / 2.0 - center.y / 2.0,
+        TextParams {
+            font_size: FONT_SIZE,
+            font_scale: scale,
+            color: YELLOW,
+            ..Default::default()
+        },
     );
 }
 
+pub fn draw_review_frame(image_height: f32, image_width: f32, current_score: Option<u32>, maybe_rank: Option<usize>) {
+    let font_size = 150.0;
+    let rank_text = if let Some(rank) = maybe_rank {
+        format!("{}. ", rank)
+    } else {
+        String::from("")
+    };
+
+    let score_text = match current_score {
+        Some(score) => format!("{}Score: {}", rank_text, score),
+        None => String::from("Accept/Reject?"),
+    };
+
+    draw_text(score_text.as_str(), 0., image_height + font_size, font_size, YELLOW);
+}
+
 pub fn draw_countdown(count: f32, image_height: f32, image_width: f32) {
+    const FONT_SIZE: u16 = 160;
     let count_digit = count.ceil() as i32;
     let digit_str = format!("{}", count_digit);
-    let font_size = 160.0 * (-(count * 2.0 * PI).sin() + 2.0) / 2.0;
-    // let font_size = 260.0 * (count % 1.0 + 0.3);
+    let font_scale = (-(count * 2.0 * PI).sin() + 2.0) / 2.0;
 
-    let center = get_text_center(&digit_str, Option::None, font_size as u16, 1.0, 0.0);
-    draw_text(
+    let center = get_text_center(&digit_str, None, FONT_SIZE, font_scale, 0.0);
+    draw_text_ex(
         &digit_str,
         image_width / 2.0 - center.x / 2.0,
         image_height / 2.0 - center.y / 2.0,
-        font_size,
-        YELLOW,
+        TextParams {
+            font_size: FONT_SIZE,
+            font_scale,
+            color: YELLOW,
+            ..Default::default()
+        },
     );
 }
 

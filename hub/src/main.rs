@@ -6,10 +6,12 @@ mod button;
 mod serial;
 
 use core::panic;
+use std::cmp::Reverse;
 use gphoto2::file::CameraFilePath;
 use image::EncodableLayout;
 use image::buffer::ConvertBuffer;
 use image::{DynamicImage, ImageEncoder, ImageReader, RgbaImage};
+use macroquad::math::u32;
 use macroquad::prelude::*;
 use serialport::{SerialPort, SerialPortInfo, new};
 use std::fmt::write;
@@ -41,6 +43,7 @@ enum ProgramState {
     Capturing,
     FetchingImage,
     Review,
+    ScoreReveal(u32, usize),
     Leaderboard,
 }
 
@@ -96,8 +99,10 @@ async fn main() -> Result<(), String> {
 
     let mut ledstrip_timer = timer::Timer::new(150);
 
+    let mut score_reveal_timer = timer::Timer::new(3000);
+
     let mut scores = load_scores();
-    scores.sort_by_key(|im| { im.score });
+    scores.sort_by_key(|im| { Reverse(im.score) });
 
     let mut current_score: Option<u32> = None;
 
@@ -203,19 +208,21 @@ async fn main() -> Result<(), String> {
                 ui::draw_loading_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
             }
             ProgramState::Review => {
+                // lol ni kommer inte kunna hitta koden som beräknar score
                 current_score = match imagescore_rx.try_recv() {
                     Ok(score) => Some(score),
                     _ => current_score,
                 };
                 ui::draw_image(&captured_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 ui::draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons);
-                ui::draw_review_frame(IMAGE_HEIGHT, IMAGE_WIDTH, current_score);
+                ui::draw_review_frame(IMAGE_HEIGHT, IMAGE_WIDTH, None, None);
 
                 match button_press {
                     Some(button::ButtonPress::Accept) => {
                         if let Some(score) = current_score {
-                            state = ProgramState::Preview;
-                            save_image(&last_captured_image, &mut scores, score);
+                            let rank = save_image(&last_captured_image, &mut scores, score);
+                            state = ProgramState::ScoreReveal(score, rank.unwrap_or(0));
+                            score_reveal_timer.reset();
                         }
                     }
                     Some(button::ButtonPress::Reject) => {
@@ -223,6 +230,13 @@ async fn main() -> Result<(), String> {
                     }
                     _ => {}
                 }
+            }
+            ProgramState::ScoreReveal(score, rank) => {
+                if score_reveal_timer.triggered() {
+                    state = ProgramState::Preview;
+                }
+                ui::draw_image(&captured_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
+                ui::draw_score_reveal(IMAGE_HEIGHT, IMAGE_WIDTH, score, score_reveal_timer.progress(), rank);
             }
             ProgramState::Leaderboard => {
                 match button_press {
@@ -249,7 +263,7 @@ async fn main() -> Result<(), String> {
                 }
                 ui::draw_image(&leaderboard_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 ui::draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons);
-                ui::draw_review_frame(IMAGE_HEIGHT, IMAGE_WIDTH, current_score);
+                ui::draw_review_frame(IMAGE_HEIGHT, IMAGE_WIDTH, current_score, Some(leaderboard_index + 1));
             }
         }
         next_frame().await;
@@ -282,6 +296,7 @@ fn send_ledstrip_message(port: &mut Box<dyn SerialPort>, state: &ProgramState, c
         ProgramState::FetchingImage => LED_STATE_STANDBY,
         ProgramState::Review => LED_STATE_STANDBY,
         ProgramState::Leaderboard => LED_STATE_STANDBY,
+        ProgramState::ScoreReveal(_, _) => LED_STATE_STANDBY,
     };
     let _ = serial::send_serial_message(port, serial::TXMessage::SetLightState(light_state));
 }
@@ -292,6 +307,7 @@ fn update_enabled_buttons(buttons: &mut Vec<button::Button>, state: &ProgramStat
         ProgramState::Countdown => vec![button::RED_BUTTON],
         ProgramState::Capturing => vec![],
         ProgramState::FetchingImage => vec![],
+        ProgramState::ScoreReveal(_, _) => vec![],
         ProgramState::Review => vec![button::RED_BUTTON, button::GREEN_BUTTON],
         ProgramState::Leaderboard => vec![button::WHITE_BUTTON, button::RED_BUTTON, button::GREEN_BUTTON],
     };
@@ -302,10 +318,10 @@ fn update_enabled_buttons(buttons: &mut Vec<button::Button>, state: &ProgramStat
     }
 }
 
-fn save_image(image: &RgbaImage, scores: &mut Vec<ScoredImage>, current_score: u32) {
+fn save_image(image: &RgbaImage, scores: &mut Vec<ScoredImage>, current_score: u32) -> Option<usize> {
     if let Err(error) = std::fs::create_dir_all(IMAGE_SAVE_DIRECTORY) {
         eprintln!("Failed to create image directory {IMAGE_SAVE_DIRECTORY}: {error}");
-        return;
+        return None;
     }
 
     let mut image_number = 1;
@@ -324,8 +340,15 @@ fn save_image(image: &RgbaImage, scores: &mut Vec<ScoredImage>, current_score: u
 
     scores.push(ScoredImage { path: image_path.to_str().unwrap().to_string(), score: current_score });
 
-    scores.sort_by_key(|im| { im.score });
+    scores.sort_by_key(|im| { Reverse(im.score) });
+    let maybe_sorted_score_index = scores.iter().position(|im| im.score == current_score);
+    let index = if let Some(idx) = maybe_sorted_score_index {
+        idx
+    } else {
+        0  // should never happen
+    };
     save_scores(scores);
+    Some(index + 1)
 }
 
 
