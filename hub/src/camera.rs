@@ -118,9 +118,7 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
                 let msg = fetch_image(&camera, &path).map_or(ImageMessage::FetchFailed, |image| {
                     ImageMessage::FetchedImage(image, path)
                 });
-                println!("Sending image");
                 image_tx.send(msg).unwrap();
-                println!("Sent image");
             }
             Some(CameraCommand::DeleteImage(path)) => {
                 camera
@@ -153,7 +151,7 @@ fn capture_image(camera: &Camera) -> Option<CameraFilePath> {
     drain_camera_events(camera)?;
     camera.trigger_capture().wait().ok()?;
 
-    let deadline = Instant::now() + Duration::from_secs(30);
+    let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         let remaining = deadline.checked_duration_since(Instant::now())?;
         match camera

@@ -7,17 +7,11 @@ mod serial;
 
 use core::panic;
 use std::cmp::Reverse;
-use gphoto2::file::CameraFilePath;
-use image::EncodableLayout;
-use image::buffer::ConvertBuffer;
-use image::{DynamicImage, ImageEncoder, ImageReader, RgbaImage};
+use image::{DynamicImage, ImageReader, RgbaImage};
 use macroquad::math::u32;
 use macroquad::prelude::*;
 use serialport::{SerialPort, SerialPortInfo, new};
-use std::fmt::write;
 use std::fs::{File, copy};
-use std::io::Cursor;
-use std::io::prelude::*;
 use std::path::Path;
 use std::sync::mpsc;
 use std::{env, thread};
@@ -42,6 +36,7 @@ enum ProgramState {
     Preview,
     Countdown,
     Capturing,
+    CaptureFailed,
     FetchingImage,
     Review,
     ScoreReveal(u32, usize),
@@ -100,6 +95,7 @@ async fn main() -> Result<(), String> {
     let mut ledstrip_timer = timer::Timer::new(150);
 
     let mut score_reveal_timer = timer::Timer::new(3000);
+    let mut capture_failed_timer = timer::Timer::new(3000);
 
     let mut scores = load_scores();
     scores.sort_by_key(|im| { Reverse(im.score) });
@@ -188,12 +184,20 @@ async fn main() -> Result<(), String> {
                     }
                     Ok(ImageMessage::CaptureFailed) => {
                         println!("Failed to capture image");
-                        state = ProgramState::Preview;
+                        state = ProgramState::CaptureFailed;
+                        capture_failed_timer.reset();
                     }
                     _ => {}
                 };
                 ui::draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 ui::draw_cheese_frame(IMAGE_HEIGHT, IMAGE_WIDTH);
+            }
+            ProgramState::CaptureFailed => {
+                if capture_failed_timer.triggered() {
+                    state = ProgramState::Preview;
+                }
+                ui::draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
+                ui::draw_capture_failed(IMAGE_HEIGHT, IMAGE_WIDTH);
             }
             ProgramState::FetchingImage => {
                 let fetch_response = image_rx.try_recv();
@@ -299,6 +303,7 @@ fn send_ledstrip_message(port: &mut Box<dyn SerialPort>, state: &ProgramState, c
             }
         }
         ProgramState::Capturing => LED_STATE_CAPTURING,
+        ProgramState::CaptureFailed => LED_STATE_STANDBY,
         ProgramState::FetchingImage => LED_STATE_STANDBY,
         ProgramState::Review => LED_STATE_STANDBY,
         ProgramState::Leaderboard => LED_STATE_STANDBY,
@@ -312,6 +317,7 @@ fn update_enabled_buttons(buttons: &mut Vec<button::Button>, state: &ProgramStat
         ProgramState::Preview => vec![button::BIG_WHITE_BUTTON, button::BLUE_BUTTON, button::WHITE_BUTTON],
         ProgramState::Countdown => vec![button::RED_BUTTON],
         ProgramState::Capturing => vec![],
+        ProgramState::CaptureFailed => vec![],
         ProgramState::FetchingImage => vec![],
         ProgramState::ScoreReveal(_, _) => vec![],
         ProgramState::Review => vec![button::RED_BUTTON, button::GREEN_BUTTON],

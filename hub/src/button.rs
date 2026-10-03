@@ -26,7 +26,7 @@ pub struct Button {
 
 pub fn init_buttons() -> Vec<Button> {
     vec![
-        Button {pin: BIG_WHITE_BUTTON, color: GRAY,     enabled: false},
+        Button {pin: BIG_WHITE_BUTTON, color: WHITE,     enabled: false},
         Button {pin: RED_BUTTON,       color: RED,      enabled: false},
         Button {pin: BLUE_BUTTON,      color: BLUE,     enabled: false},
         Button {pin: WHITE_BUTTON,     color: WHITE,    enabled: false},
