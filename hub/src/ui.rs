@@ -2,7 +2,7 @@ use image::{DynamicImage, ImageEncoder, ImageReader, RgbaImage};
 use macroquad::prelude::*;
 use std::f32::consts::PI;
 
-use crate::button;
+use crate::{ProgramState, button::{self, button_text}};
 
 pub struct DisplayTexture {
     pub texture: Texture2D,
@@ -130,28 +130,30 @@ pub fn draw_countdown(count: f32, image_height: f32, image_width: f32) {
     );
 }
 
-pub fn draw_buttons(image_height: f32, image_width: f32, buttons: &Vec<button::Button>) {
+pub fn draw_buttons(image_height: f32, image_width: f32, buttons: &Vec<button::Button>, state: &ProgramState) {
     let button_x = image_width + 100.0;
     let label_x = button_x + 60.0;
     let button_y = 100.0;
     let button_y_separation = 100.0;
     let font_size = 40.0;
 
-    for (i, button) in buttons.into_iter().enumerate() {
+    let mut i = 0.0;
+    for button in buttons {
         if button.enabled {
             draw_circle(
                 button_x,
-                button_y + (i as f32) * button_y_separation,
+                button_y + i * button_y_separation,
                 40.0,
                 button.color,
             );
             draw_text(
-                button.text.as_str(),
+                button_text(button.pin, state),
                 label_x,
-                button_y + (i as f32) * button_y_separation + font_size / 4.0,
+                button_y + i * button_y_separation + font_size / 4.0,
                 font_size,
                 WHITE,
             );
+            i += 1.0;
         }
     }
 }

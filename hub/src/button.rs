@@ -1,7 +1,7 @@
 use macroquad::prelude::*;
 use serialport::{SerialPort};
 
-use crate::serial;
+use crate::{ProgramState, serial};
 
 pub const BIG_WHITE_BUTTON: u8 = 6;
 pub const RED_BUTTON: u8 = 7;
@@ -21,19 +21,48 @@ pub enum ButtonPress {
 pub struct Button {
     pub pin: u8,
     pub color: Color,
-    pub text: String,
     pub enabled: bool,
 }
 
 pub fn init_buttons() -> Vec<Button> {
     vec![
-        Button {pin: BIG_WHITE_BUTTON, color: GRAY, text: String::from("Capture"), enabled: false},
-        Button {pin: RED_BUTTON,       color: RED, text: String::from("Reject"), enabled: false},
-        Button {pin: BLUE_BUTTON,      color: BLUE, text: String::from("Change effect"), enabled: false},
-        Button {pin: WHITE_BUTTON,     color: WHITE, text: String::from("White"), enabled: false},
-        Button {pin: YELLOW_BUTTON,    color: YELLOW, text: String::from("Yellow"), enabled: false},
-        Button {pin: GREEN_BUTTON,     color: GREEN, text: String::from("Accept"), enabled: false},
+        Button {pin: BIG_WHITE_BUTTON, color: GRAY,     enabled: false},
+        Button {pin: RED_BUTTON,       color: RED,      enabled: false},
+        Button {pin: BLUE_BUTTON,      color: BLUE,     enabled: false},
+        Button {pin: WHITE_BUTTON,     color: WHITE,    enabled: false},
+        Button {pin: YELLOW_BUTTON,    color: YELLOW,   enabled: false},
+        Button {pin: GREEN_BUTTON,     color: GREEN,    enabled: false},
     ]
+}
+
+pub fn button_text(pin: u8, state: &ProgramState) -> &'static str {
+    // i don't really know if this can be done in a better way sorry frans if you are reading
+    // this please help
+    if pin == BIG_WHITE_BUTTON {
+        "Capture"
+    } else if pin == RED_BUTTON {
+        match state {
+            ProgramState::Leaderboard => "Previous",
+            ProgramState::Countdown => "Cancel",
+            _ => "Reject",
+        }
+    } else if pin == BLUE_BUTTON {
+        "Change effect"
+    } else if pin == WHITE_BUTTON {
+        match state {
+            ProgramState::Leaderboard => "Go back",
+            _ => "See leaderboard",
+        }
+    } else if pin == YELLOW_BUTTON {
+        "Toggle flash"
+    } else if pin == GREEN_BUTTON {
+        match state {
+            ProgramState::Leaderboard => "Next",
+            _ => "Accept",
+        }
+    } else {
+        ""
+    }
 }
 
 pub fn read_buttons(port: &mut Box<dyn SerialPort>) -> Option<ButtonPress> {

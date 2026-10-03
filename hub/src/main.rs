@@ -37,6 +37,7 @@ const LED_STATE_COUNTDOWN_2: u8 = 3;
 const LED_STATE_COUNTDOWN_3: u8 = 4;
 const LED_STATE_CAPTURING: u8 = 5;
 
+#[derive(Clone)]
 enum ProgramState {
     Preview,
     Countdown,
@@ -92,7 +93,6 @@ async fn main() -> Result<(), String> {
     let mut preview_texture = ui::DisplayTexture::new(&curr_preview_image);
     let mut captured_texture = ui::DisplayTexture::new(&last_captured_image);
     let mut leaderboard_texture = ui::DisplayTexture::new(&last_captured_image);
-    let mut last_captured_path: CameraFilePath;
 
     let mut buttons_timer = timer::Timer::new(100);
     let mut buttons = button::init_buttons();
@@ -152,7 +152,7 @@ async fn main() -> Result<(), String> {
                 }
 
                 ui::draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
-                ui::draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons);
+                ui::draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons, &state);
             }
             ProgramState::Countdown => {
                 camera_tx.send(CameraCommand::CapturePreview).unwrap();
@@ -164,6 +164,12 @@ async fn main() -> Result<(), String> {
                     }
                     _ => {}
                 };
+                match button_press {
+                    Some(button::ButtonPress::Reject) => {
+                        state = ProgramState::Preview;
+                    }
+                    _ => { }
+                }
                 ui::draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 if countdown_secs_left <= 0.0 {
                     state = ProgramState::Capturing;
@@ -171,6 +177,7 @@ async fn main() -> Result<(), String> {
                 } else {
                     ui::draw_countdown(countdown_secs_left, IMAGE_HEIGHT, IMAGE_WIDTH);
                 }
+                ui::draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons, &state);
             }
             ProgramState::Capturing => {
                 let capture_response = image_rx.try_recv();
@@ -194,7 +201,6 @@ async fn main() -> Result<(), String> {
                     Ok(ImageMessage::FetchedImage(image, path)) => {
                         last_captured_image = image;
                         captured_texture.update(&last_captured_image);
-                        last_captured_path = path;
                         captured_tx.send(last_captured_image.clone()).unwrap();
                         state = ProgramState::Review;
                     }
@@ -214,7 +220,7 @@ async fn main() -> Result<(), String> {
                     _ => current_score,
                 };
                 ui::draw_image(&captured_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
-                ui::draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons);
+                ui::draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons, &state);
                 ui::draw_review_frame(IMAGE_HEIGHT, IMAGE_WIDTH, None, None);
 
                 match button_press {
@@ -235,7 +241,7 @@ async fn main() -> Result<(), String> {
                 if score_reveal_timer.triggered() {
                     state = ProgramState::Preview;
                 }
-                ui::draw_image(&captured_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
+                ui::draw_image(&captured_texture.texture, IMAGE_HEIGHT * 1.2, IMAGE_WIDTH * 1.2);
                 ui::draw_score_reveal(IMAGE_HEIGHT, IMAGE_WIDTH, score, score_reveal_timer.progress(), rank);
             }
             ProgramState::Leaderboard => {
@@ -262,7 +268,7 @@ async fn main() -> Result<(), String> {
                     _ => { }
                 }
                 ui::draw_image(&leaderboard_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
-                ui::draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons);
+                ui::draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons, &state);
                 ui::draw_review_frame(IMAGE_HEIGHT, IMAGE_WIDTH, current_score, Some(leaderboard_index + 1));
             }
         }
