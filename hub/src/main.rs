@@ -7,12 +7,14 @@ mod serial;
 
 use core::panic;
 use std::cmp::Reverse;
+use std::thread::sleep;
 use image::{DynamicImage, ImageReader, RgbaImage};
 use macroquad::math::u32;
 use macroquad::prelude::*;
 use serialport::{SerialPort, SerialPortInfo, new};
 use std::fs::{File, copy};
 use std::path::Path;
+use std::process::Command;
 use std::sync::mpsc;
 use std::{env, thread};
 use std::time::{self, Duration, Instant};
@@ -46,6 +48,8 @@ enum ProgramState {
 
 #[macroquad::main("photobooth-hub")]
 async fn main() -> Result<(), String> {
+    ensure_logged_in_to_immich();
+
     let args: Vec<String> = env::args().collect();
 
     let ignore_controller = args.len() > 1 && args[1] == "-f";
@@ -62,6 +66,10 @@ async fn main() -> Result<(), String> {
 
     thread::spawn(move || {
         imagescore::score_loop(imagescore_tx, captured_rx);
+    });
+
+    thread::spawn(move || {
+        upload_loop();
     });
 
     let mut port = serial::find_port(ignore_controller);
@@ -279,6 +287,29 @@ async fn main() -> Result<(), String> {
         next_frame().await;
     }
 }
+
+fn ensure_logged_in_to_immich() {
+    if !std::fs::exists("/home/malcolm/.config/immich/auth.yml").unwrap() {
+        panic!("Not logged in to immich!");
+    }
+}
+
+fn upload_loop() {
+    loop {
+        match Command::new("/usr/bin/immich")
+            .args(["upload", "--album-name", "Photobooth", "--recursive", IMAGE_SAVE_DIRECTORY])
+            .output() {
+                Ok(output) => {
+                    println!("immich exited with: {}", output.status);
+                    println!("stdout: {}", String::from_utf8_lossy(&output.stdout));
+                    eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
+                }
+                Err(error) => eprintln!("Could not start immich: {error}")
+            }
+        std::thread::sleep(Duration::new(120, 0));
+    }
+}
+
 
 fn send_buttons_enabled_message(port: &mut Box<dyn SerialPort>, buttons: &mut Vec<button::Button>) {
     let mut bitmask: u8 = 0;
