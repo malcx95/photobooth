@@ -32,6 +32,11 @@ const LED_STATE_COUNTDOWN_1: u8 = 2;
 const LED_STATE_COUNTDOWN_2: u8 = 3;
 const LED_STATE_COUNTDOWN_3: u8 = 4;
 const LED_STATE_CAPTURING: u8 = 5;
+const LED_STATE_ERROR: u8 = 6;
+const LED_STATE_REVIEW: u8 = 7;
+const LED_STATE_LEADERBOARD: u8 = 8;
+const LED_STATE_FETCHING: u8 = 9;
+
 
 #[derive(Clone)]
 enum ProgramState {
@@ -334,11 +339,11 @@ fn send_ledstrip_message(port: &mut Box<dyn SerialPort>, state: &ProgramState, c
             }
         }
         ProgramState::Capturing => LED_STATE_CAPTURING,
-        ProgramState::CaptureFailed => LED_STATE_STANDBY,
-        ProgramState::FetchingImage => LED_STATE_STANDBY,
-        ProgramState::Review => LED_STATE_STANDBY,
-        ProgramState::Leaderboard => LED_STATE_STANDBY,
-        ProgramState::ScoreReveal(_, _) => LED_STATE_STANDBY,
+        ProgramState::CaptureFailed => LED_STATE_ERROR,
+        ProgramState::FetchingImage => LED_STATE_FETCHING,
+        ProgramState::Review => LED_STATE_REVIEW,
+        ProgramState::Leaderboard => LED_STATE_LEADERBOARD,
+        ProgramState::ScoreReveal(_, _) => LED_STATE_FETCHING,
     };
     let _ = serial::send_serial_message(port, serial::TXMessage::SetLightState(light_state));
 }

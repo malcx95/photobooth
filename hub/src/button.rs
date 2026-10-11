@@ -94,6 +94,10 @@ pub fn read_buttons(port: &mut Box<dyn SerialPort>) -> Option<ButtonPress> {
                 Some(ButtonPress::Accept)
             } else if is_key_down(KeyCode::R) {
                 Some(ButtonPress::Reject)
+            } else if is_key_down(KeyCode::L) {
+                Some(ButtonPress::Leaderboard)
+            } else if is_key_down(KeyCode::C) {
+                Some(ButtonPress::CycleEffect)
             } else {
                 None
             }

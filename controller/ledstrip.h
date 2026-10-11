@@ -11,7 +11,11 @@ enum LEDState : uint8_t
   COUNTDOWN_1 = 2,
   COUNTDOWN_2 = 3,
   COUNTDOWN_3 = 4,
-  CAPTURING = 5
+  CAPTURING = 5,
+  ERROR = 6,
+  REVIEW = 7,
+  LEADERBOARD = 8,
+  FETCHING = 9
 };
 
 class LEDStrip
@@ -28,8 +32,15 @@ private:
   void update_countdown2();
   void update_countdown3();
   void update_capturing();
-
+  void update_error();
+  void update_review();
+  void update_leaderboard();
+  void update_fetching();
 private:
   CRGB leds[NUM_LEDS];
   uint64_t it;
+
+  int16_t dir = 1;
+  int16_t fetching_index = 0;
+  int16_t fetching_speed_divisor = 1;
 };
