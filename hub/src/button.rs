@@ -15,6 +15,7 @@ pub enum ButtonPress {
     CycleEffect,
     Accept,
     Reject,
+    CycleExposure,
     Leaderboard,
 }
 
@@ -47,14 +48,14 @@ pub fn button_text(pin: u8, state: &ProgramState) -> &'static str {
             _ => "Reject",
         }
     } else if pin == BLUE_BUTTON {
-        "Change effect"
+        "Effect"
     } else if pin == WHITE_BUTTON {
         match state {
             ProgramState::Leaderboard => "Go back",
-            _ => "See leaderboard",
+            _ => "Leaderboard",
         }
     } else if pin == YELLOW_BUTTON {
-        "Toggle flash"
+        "Exposure"
     } else if pin == GREEN_BUTTON {
         match state {
             ProgramState::Leaderboard => "Next",
@@ -77,6 +78,8 @@ pub fn read_buttons(port: &mut Box<dyn SerialPort>) -> Option<ButtonPress> {
                 Some(ButtonPress::Accept)
             } else if button == BLUE_BUTTON {
                 Some(ButtonPress::CycleEffect)
+            } else if button == YELLOW_BUTTON {
+                Some(ButtonPress::CycleExposure)
             } else if button == WHITE_BUTTON {
                 Some(ButtonPress::Leaderboard)
             } else {
@@ -96,6 +99,8 @@ pub fn read_buttons(port: &mut Box<dyn SerialPort>) -> Option<ButtonPress> {
                 Some(ButtonPress::Reject)
             } else if is_key_down(KeyCode::L) {
                 Some(ButtonPress::Leaderboard)
+            } else if is_key_down(KeyCode::F) {
+                Some(ButtonPress::CycleExposure)
             } else if is_key_down(KeyCode::C) {
                 Some(ButtonPress::CycleEffect)
             } else {

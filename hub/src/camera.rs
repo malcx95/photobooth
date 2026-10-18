@@ -30,6 +30,7 @@ pub enum CameraCommand {
     CaptureImage,
     CapturePreview,
     CycleEffect,
+    SetMode(usize),
     FetchImage(CameraFilePath),
     DeleteImage(CameraFilePath),
 }
@@ -69,24 +70,21 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
         "32912",
     ];
 
+    let apertures = vec![
+        "f/2.8",
+        "f/4",
+        "f/6.3",
+    ];
+
     let mut effect_index = 0;
 
     let image_quality = get_camera_setting(&camera, "imagequality");
     let picture_effect = get_camera_setting(&camera, "d21b");
+    let aperture = get_camera_setting(&camera, "f-number");
 
     set_camera_setting(&camera, &image_quality, "Fine");
     set_camera_setting(&camera, &picture_effect, effects[effect_index]);
-
-    let picture_effect = camera
-        .config_key::<RadioWidget>("d21b")
-        .wait()
-        .unwrap();
-    picture_effect.set_choice(effects[effect_index]).unwrap();
-    camera.set_config(&picture_effect).wait().unwrap();
-
-    // let shutter_speed = camera.config_key::<RadioWidget>("shutterspeed").wait().unwrap();;
-    // shutter_speed.set_choice("1/10").unwrap();
-    // camera.set_config(&shutter_speed).wait().unwrap();
+    set_camera_setting(&camera, &aperture, apertures[0]);
 
     let config = camera.config().wait().unwrap();
     println!("{:#?}", config);
@@ -112,6 +110,9 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
             Some(CameraCommand::CycleEffect) => {
                 effect_index = (effect_index + 1) % effects.len();
                 set_camera_setting(&camera, &picture_effect, effects[effect_index]); // picture effect
+            }
+            Some(CameraCommand::SetMode(index)) => {
+                set_camera_setting(&camera, &aperture, apertures[index]);
             }
             Some(CameraCommand::FetchImage(path)) => {
                 sleep(Duration::from_secs(1));
@@ -145,10 +146,7 @@ fn preview_camera(camera: &Camera, camera_context: &Context) -> Option<RgbaImage
 }
 
 fn capture_image(camera: &Camera) -> Option<CameraFilePath> {
-    // Some camera drivers return the previous image from `gp_camera_capture`.
-    // Clear any old notifications, then wait for the NewFile event caused by
-    // this trigger so the downloaded path is tied to this shutter press.
-    drain_camera_events(camera)?;
+    flush_camera_events(camera)?;
     camera.trigger_capture().wait().ok()?;
 
     let deadline = Instant::now() + Duration::from_secs(10);
@@ -166,7 +164,7 @@ fn capture_image(camera: &Camera) -> Option<CameraFilePath> {
     }
 }
 
-fn drain_camera_events(camera: &Camera) -> Option<()> {
+fn flush_camera_events(camera: &Camera) -> Option<()> {
     loop {
         match camera.wait_event(Duration::ZERO).wait().ok()? {
             CameraEvent::Timeout => return Some(()),
@@ -180,7 +178,7 @@ fn fetch_image(camera: &Camera, file: &CameraFilePath) -> Option<RgbaImage> {
     let mut camera_file = None;
 
     for _ in 0..10 {
-        // try five times
+        // try ten times
         match camera
             .fs()
             .download_to(&file.folder(), &file.name(), &download_path)
@@ -214,14 +212,13 @@ fn fetch_image(camera: &Camera, file: &CameraFilePath) -> Option<RgbaImage> {
         );
     }
 
-    println!("Yay! we actually got an image");
     Some(converted)
 }
 
 fn capture_download_path() -> PathBuf {
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("System clock is before the Unix epoch")
+        .unwrap()
         .as_nanos();
 
     std::env::temp_dir().join(format!(

@@ -1,9 +1,10 @@
 #include "ledstrip.h"
+#include "crgb.h"
 #include <cstdint>
 #include <math.h>
 
 
-constexpr int MAX_CURRENT_MILLIAMPS = 5000;//20000;
+constexpr int MAX_CURRENT_MILLIAMPS = 25000;
 constexpr uint8_t RGB_PIN = 10;
 
 
@@ -93,7 +94,7 @@ void LEDStrip::update_countdown3()
 
 void LEDStrip::update_capturing()
 {
-  fill_solid(leds, NUM_LEDS, CRGB::White);
+  fill_solid(leds, NUM_LEDS, {255, 255, 230});
 }
 
 void LEDStrip::update_error()

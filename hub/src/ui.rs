@@ -45,6 +45,22 @@ pub fn draw_image(texture: &Texture2D, target_height: f32, target_width: f32) {
     );
 }
 
+pub fn draw_preview_frame(image_height: f32, image_width: f32, lights_on: bool) {
+    let font_size = 50.0;
+    let text = if lights_on {
+        "Lights on"
+    } else {
+        "Lights off"
+    };
+    draw_text(
+        text,
+        0.0,
+        image_height,
+        font_size,
+        WHITE,
+    );
+}
+
 pub fn draw_cheese_frame(image_height: f32, image_width: f32) {
     let font_size = 400.0;
     let center = get_text_center("CHEESE!", Option::None, font_size as u16, 1.0, 0.0);
@@ -72,12 +88,12 @@ pub fn draw_loading_frame(image_height: f32, image_width: f32) {
 
 pub fn draw_score_reveal(image_height: f32, image_width: f32, score: u32, progress: f32, rank: usize) {
     const FONT_SIZE: u16 = 150;
-    let rank_text = if rank == 1 {
-        String::from("You are number 1!")
+    let rank_text = format!("Rank: {}", rank);
+    let score_text = if rank == 1 {
+        format!("You are number 1! ({})", score)
     } else {
-        format!("Rank: {}", rank)
+        format!("Score: {}, {}", score, rank_text)
     };
-    let score_text = format!("Score: {}, {}", score, rank_text);
     let scale = (progress * 4.0).min(1.0);
     let center = get_text_center(score_text.as_str(), Option::None, FONT_SIZE, scale, 0.0);
 

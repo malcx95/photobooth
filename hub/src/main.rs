@@ -24,8 +24,8 @@ use crate::imagescore::{ScoredImage, load_scores, save_scores, score};
 
 const IMAGE_SAVE_DIRECTORY: &str = "/home/malcolm/photoboothimages";
 
-const IMAGE_WIDTH: f32 = 1024.0;
-const IMAGE_HEIGHT: f32 = 680.0;
+const IMAGE_WIDTH: f32 = 1680.0;
+const IMAGE_HEIGHT: f32 = 1050.0;
 
 const LED_STATE_STANDBY: u8 = 1;
 const LED_STATE_COUNTDOWN_1: u8 = 2;
@@ -117,6 +117,9 @@ async fn main() -> Result<(), String> {
 
     let mut leaderboard_index = 0;
 
+    let mut lights_on = true;
+    // camera_tx.send(CameraCommand::SetMode(lights_on)).unwrap();
+
     loop {
         let button_press = button::read_buttons(&mut port);
         let countdown_secs_left = 3.0 - countdown_start.elapsed().as_secs_f32();
@@ -127,7 +130,7 @@ async fn main() -> Result<(), String> {
         }
 
         if ledstrip_timer.triggered() {
-            send_ledstrip_message(&mut port, &state, countdown_secs_left);
+            send_ledstrip_message(&mut port, &state, countdown_secs_left, lights_on);
         }
 
         match state {
@@ -149,6 +152,10 @@ async fn main() -> Result<(), String> {
                     Some(button::ButtonPress::CycleEffect) => {
                         camera_tx.send(CameraCommand::CycleEffect).unwrap();
                     }
+                    Some(button::ButtonPress::CycleExposure) => {
+                        lights_on = !lights_on;
+                        // camera_tx.send(CameraCommand::SetMode(exposure_index)).unwrap();
+                    }
                     Some(button::ButtonPress::Leaderboard) => {
                         if scores.len() > 0 {
                             state = ProgramState::Leaderboard;
@@ -162,6 +169,7 @@ async fn main() -> Result<(), String> {
 
                 ui::draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 ui::draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons, &state);
+                ui::draw_preview_frame(IMAGE_HEIGHT, IMAGE_WIDTH, lights_on);
             }
             ProgramState::Countdown => {
                 camera_tx.send(CameraCommand::CapturePreview).unwrap();
@@ -324,7 +332,7 @@ fn send_buttons_enabled_message(port: &mut Box<dyn SerialPort>, buttons: &mut Ve
     let _ = serial::send_serial_message(port, serial::TXMessage::SetEnabledButtons(bitmask));
 }
 
-fn send_ledstrip_message(port: &mut Box<dyn SerialPort>, state: &ProgramState, countdown: f32) {
+fn send_ledstrip_message(port: &mut Box<dyn SerialPort>, state: &ProgramState, countdown: f32, lights_on: bool) {
     let light_state = match state {
         ProgramState::Preview => LED_STATE_STANDBY,
         ProgramState::Countdown => {
@@ -338,7 +346,13 @@ fn send_ledstrip_message(port: &mut Box<dyn SerialPort>, state: &ProgramState, c
                 LED_STATE_COUNTDOWN_1
             }
         }
-        ProgramState::Capturing => LED_STATE_CAPTURING,
+        ProgramState::Capturing => {
+            if lights_on {
+                LED_STATE_CAPTURING
+            } else {
+                LED_STATE_LEADERBOARD
+            }
+        }
         ProgramState::CaptureFailed => LED_STATE_ERROR,
         ProgramState::FetchingImage => LED_STATE_FETCHING,
         ProgramState::Review => LED_STATE_REVIEW,
@@ -350,7 +364,7 @@ fn send_ledstrip_message(port: &mut Box<dyn SerialPort>, state: &ProgramState, c
 
 fn update_enabled_buttons(buttons: &mut Vec<button::Button>, state: &ProgramState) {
     let enabled_pins = match state {
-        ProgramState::Preview => vec![button::BIG_WHITE_BUTTON, button::BLUE_BUTTON, button::WHITE_BUTTON],
+        ProgramState::Preview => vec![button::BIG_WHITE_BUTTON, button::BLUE_BUTTON, button::WHITE_BUTTON, button::YELLOW_BUTTON],
         ProgramState::Countdown => vec![button::RED_BUTTON],
         ProgramState::Capturing => vec![],
         ProgramState::CaptureFailed => vec![],
@@ -417,12 +431,3 @@ fn update_leaderboard_image(scored_image: &ScoredImage, leaderboard_texture: &mu
         *current_score = None;
     }
 }
-
-
-// fn capture_image(camera: &Camera) {
-//     let file = camera.capture_image().wait().unwrap();
-//     let _ = camera
-//         .fs()
-//         .download_to(&file.folder(), &file.name(), Path::new("/tmp/image.jpg"))
-//         .wait();
-// }
