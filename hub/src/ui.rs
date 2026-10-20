@@ -1,4 +1,4 @@
-use image::{DynamicImage, ImageEncoder, ImageReader, RgbaImage};
+use image::{RgbaImage};
 use macroquad::prelude::*;
 use std::f32::consts::PI;
 
@@ -45,44 +45,47 @@ pub fn draw_image(texture: &Texture2D, target_height: f32, target_width: f32) {
     );
 }
 
-pub fn draw_preview_frame(image_height: f32, image_width: f32, lights_on: bool) {
-    let font_size = 50.0;
+pub fn draw_preview_frame(image_height: f32, lights_on: bool) {
+    let font_size = 50;
     let text = if lights_on {
         "Lights on"
     } else {
         "Lights off"
     };
-    draw_text(
+    draw_text_shaded(
         text,
         0.0,
         image_height,
         font_size,
         WHITE,
+        1.0
     );
 }
 
 pub fn draw_cheese_frame(image_height: f32, image_width: f32) {
-    let font_size = 400.0;
+    let font_size = 400;
     let center = get_text_center("CHEESE!", Option::None, font_size as u16, 1.0, 0.0);
-    draw_text(
+    draw_text_shaded(
         "CHEESE!",
         image_width / 2.0 - center.x / 2.0,
         image_height / 2.0 - center.y / 2.0,
         font_size,
         YELLOW,
+        1.0
     );
 }
 
 pub fn draw_loading_frame(image_height: f32, image_width: f32) {
-    let font_size = 100.0;
+    let font_size = 100;
 
     let center = get_text_center("Loading...", Option::None, font_size as u16, 1.0, 0.0);
-    draw_text(
+    draw_text_shaded(
         "Loading...",
         image_width / 2.0 - center.x / 2.0,
         image_height / 2.0 - center.y / 2.0,
         font_size,
         YELLOW,
+        1.0,
     );
 }
 
@@ -97,36 +100,34 @@ pub fn draw_score_reveal(image_height: f32, image_width: f32, score: u32, progre
     let scale = (progress * 4.0).min(1.0);
     let center = get_text_center(score_text.as_str(), Option::None, FONT_SIZE, scale, 0.0);
 
-    draw_text_ex(
+    draw_text_shaded(
         score_text.as_str(),
         image_width / 2.0 - center.x / 2.0 - FONT_SIZE as f32,
         image_height / 2.0 - center.y / 2.0,
-        TextParams {
-            font_size: FONT_SIZE,
-            font_scale: scale,
-            color: YELLOW,
-            ..Default::default()
-        },
+        FONT_SIZE,
+        YELLOW,
+        scale,
     );
 }
 
 pub fn draw_capture_failed(image_height: f32, image_width: f32) {
-    let font_size = 100.0;
+    let font_size = 100;
 
     let text = "Failed, try again";
 
     let center = get_text_center(text, Option::None, font_size as u16, 1.0, 0.0);
-    draw_text(
+    draw_text_shaded(
         text,
         image_width / 2.0 - center.x / 2.0,
         image_height / 2.0 - center.y / 2.0,
         font_size,
         RED,
+        1.0
     );
 }
 
 pub fn draw_review_frame(image_height: f32, image_width: f32, current_score: Option<u32>, maybe_rank: Option<usize>) {
-    let font_size = 150.0;
+    let font_size = 150;
     let rank_text = if let Some(rank) = maybe_rank {
         format!("{}. ", rank)
     } else {
@@ -138,7 +139,7 @@ pub fn draw_review_frame(image_height: f32, image_width: f32, current_score: Opt
         None => String::from("Accept/Reject?"),
     };
 
-    draw_text(score_text.as_str(), 0., image_height + font_size, font_size, YELLOW);
+    draw_text_shaded(score_text.as_str(), 0., image_height + font_size as f32, font_size, YELLOW, 1.0);
 }
 
 pub fn draw_countdown(count: f32, image_height: f32, image_width: f32) {
@@ -148,16 +149,13 @@ pub fn draw_countdown(count: f32, image_height: f32, image_width: f32) {
     let font_scale = (-(count * 2.0 * PI).sin() + 2.0) / 2.0;
 
     let center = get_text_center(&digit_str, None, FONT_SIZE, font_scale, 0.0);
-    draw_text_ex(
+    draw_text_shaded(
         &digit_str,
         image_width / 2.0 - center.x / 2.0,
         image_height / 2.0 - center.y / 2.0,
-        TextParams {
-            font_size: FONT_SIZE,
-            font_scale,
-            color: YELLOW,
-            ..Default::default()
-        },
+        FONT_SIZE,
+        YELLOW,
+        font_scale,
     );
 }
 
@@ -199,4 +197,29 @@ pub fn draw_buttons(image_height: f32, image_width: f32, buttons: &Vec<button::B
             i += 1.0;
         }
     }
+}
+
+fn draw_text_shaded(text: &str, x: f32, y: f32, font_size: u16, color: Color, font_scale: f32) {
+    draw_text_ex(
+        text,
+        x + (font_size as f32) * font_scale / 20.0,
+        y + (font_size as f32) * font_scale / 20.0,
+        TextParams {
+            font_size,
+            font_scale,
+            color: BLACK,
+            ..Default::default()
+        },
+    );
+    draw_text_ex(
+        text,
+        x,
+        y,
+        TextParams {
+            font_size,
+            font_scale,
+            color: color,
+            ..Default::default()
+        },
+    );
 }

@@ -169,7 +169,7 @@ async fn main() -> Result<(), String> {
 
                 ui::draw_image(&preview_texture.texture, IMAGE_HEIGHT, IMAGE_WIDTH);
                 ui::draw_buttons(IMAGE_HEIGHT, IMAGE_WIDTH, &buttons, &state);
-                ui::draw_preview_frame(IMAGE_HEIGHT, IMAGE_WIDTH, lights_on);
+                ui::draw_preview_frame(IMAGE_HEIGHT, lights_on);
             }
             ProgramState::Countdown => {
                 camera_tx.send(CameraCommand::CapturePreview).unwrap();

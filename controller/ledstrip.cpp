@@ -139,7 +139,7 @@ void LEDStrip::update_fetching()
   {
     dir = -1;
   }
-  fetching_index += static_cast<int16_t>(it % fetching_speed_divisor == 0) * dir;
+  fetching_index += 2 * dir;
   fill_solid(leds, NUM_LEDS, CRGB::Black);
   leds[fetching_index] = CRGB::White;
 }
