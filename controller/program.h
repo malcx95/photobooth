@@ -34,7 +34,7 @@ private:
 
   LEDStrip ledstrip;
   Timer comm_timer{10};
-  Timer led_timer{50};
+  Timer led_timer{5};
   Timer button_timer{50};
 
 private:

@@ -139,7 +139,7 @@ pub fn draw_review_frame(image_height: f32, image_width: f32, current_score: Opt
         None => String::from("Accept/Reject?"),
     };
 
-    draw_text_shaded(score_text.as_str(), 0., image_height + font_size as f32, font_size, YELLOW, 1.0);
+    draw_text_shaded(score_text.as_str(), 0., image_height, font_size, YELLOW, 1.0);
 }
 
 pub fn draw_countdown(count: f32, image_height: f32, image_width: f32) {

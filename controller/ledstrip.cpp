@@ -79,22 +79,40 @@ void LEDStrip::update_standby()
 
 void LEDStrip::update_countdown1()
 {
-  fill_solid(leds, NUM_LEDS, CRGB::Red);
+  fill_solid(leds, NUM_LEDS, CRGB::White);
 }
 
 void LEDStrip::update_countdown2()
 {
-  fill_solid(leds, NUM_LEDS, CRGB::Green);
+  fill_solid(leds, NUM_LEDS, CRGB::Black);
+  for (size_t i = 0; i < NUM_LEDS; ++i)
+  {
+    if (i % 3 == 0)
+    {
+      leds[i] = CRGB{255, 255, 255};
+      if (i + 1 < NUM_LEDS)
+      {
+        leds[i + 1] = CRGB{255, 255, 255};
+      }
+    }
+  }
 }
 
 void LEDStrip::update_countdown3()
 {
-  fill_solid(leds, NUM_LEDS, CRGB::Blue);
+  fill_solid(leds, NUM_LEDS, CRGB::Black);
+  for (size_t i = 0; i < NUM_LEDS; ++i)
+  {
+    if (i % 3 == 0)
+    {
+      leds[i] = CRGB{255, 255, 255};
+    }
+  }
 }
 
 void LEDStrip::update_capturing()
 {
-  fill_solid(leds, NUM_LEDS, {255, 255, 230});
+  fill_solid(leds, NUM_LEDS, {255, 255, 200});
 }
 
 void LEDStrip::update_error()
@@ -131,15 +149,15 @@ void LEDStrip::update_leaderboard()
 
 void LEDStrip::update_fetching()
 {
-  if (fetching_index == 0)
+  if (fetching_index <= 0)
   {
     dir = 1;
   }
-  else if (fetching_index == NUM_LEDS - 1)
+  else if (fetching_index >= NUM_LEDS - 1)
   {
     dir = -1;
   }
-  fetching_index += 2 * dir;
+  fetching_index += 5 * dir;
   fill_solid(leds, NUM_LEDS, CRGB::Black);
-  leds[fetching_index] = CRGB::White;
+  leds[(size_t)min(max(fetching_index, 0), NUM_LEDS - 1)] = CRGB::White;
 }

@@ -105,10 +105,12 @@ async fn main() -> Result<(), String> {
     let mut buttons_timer = timer::Timer::new(100);
     let mut buttons = button::init_buttons();
 
-    let mut ledstrip_timer = timer::Timer::new(150);
+    let mut ledstrip_timer = timer::Timer::new(50);
 
     let mut score_reveal_timer = timer::Timer::new(3000);
     let mut capture_failed_timer = timer::Timer::new(3000);
+
+    let mut reset_timer = timer::Timer::new(1000 * 60 * 1);
 
     let mut scores = load_scores();
     scores.sort_by_key(|im| { Reverse(im.score) });
@@ -118,7 +120,6 @@ async fn main() -> Result<(), String> {
     let mut leaderboard_index = 0;
 
     let mut lights_on = true;
-    // camera_tx.send(CameraCommand::SetMode(lights_on)).unwrap();
 
     loop {
         let button_press = button::read_buttons(&mut port);
@@ -131,6 +132,13 @@ async fn main() -> Result<(), String> {
 
         if ledstrip_timer.triggered() {
             send_ledstrip_message(&mut port, &state, countdown_secs_left, lights_on);
+        }
+
+        if reset_timer.triggered() {
+            lights_on = true;
+            camera_tx.send(CameraCommand::Reset).unwrap();
+            state = ProgramState::Preview;
+            continue;
         }
 
         match state {
@@ -148,19 +156,23 @@ async fn main() -> Result<(), String> {
                     Some(button::ButtonPress::TakePhoto) => {
                         state = ProgramState::Countdown;
                         countdown_start = Instant::now();
+                        reset_timer.reset();
                     }
                     Some(button::ButtonPress::CycleEffect) => {
                         camera_tx.send(CameraCommand::CycleEffect).unwrap();
+                        reset_timer.reset();
                     }
                     Some(button::ButtonPress::CycleExposure) => {
                         lights_on = !lights_on;
-                        // camera_tx.send(CameraCommand::SetMode(exposure_index)).unwrap();
+                        camera_tx.send(CameraCommand::SetMode(lights_on)).unwrap();
+                        reset_timer.reset();
                     }
                     Some(button::ButtonPress::Leaderboard) => {
                         if scores.len() > 0 {
                             state = ProgramState::Leaderboard;
                             update_leaderboard_image(&scores[leaderboard_index], &mut leaderboard_texture, &mut current_score);
                         }
+                        reset_timer.reset();
                     }
                     _ => {
                         camera_tx.send(CameraCommand::CapturePreview).unwrap();
@@ -280,15 +292,18 @@ async fn main() -> Result<(), String> {
                         if scores.len() > 0 {
                             update_leaderboard_image(&scores[leaderboard_index], &mut leaderboard_texture, &mut current_score);
                         }
+                        reset_timer.reset();
                     }
                     Some(button::ButtonPress::Reject) => {
                         leaderboard_index = (leaderboard_index + 1) % scores.len();
                         if scores.len() > 0 {
                             update_leaderboard_image(&scores[leaderboard_index], &mut leaderboard_texture, &mut current_score);
                         }
+                        reset_timer.reset();
                     }
                     Some(button::ButtonPress::Leaderboard) => {
                         state = ProgramState::Preview;
+                        reset_timer.reset();
                     }
                     _ => { }
                 }

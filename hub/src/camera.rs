@@ -30,7 +30,8 @@ pub enum CameraCommand {
     CaptureImage,
     CapturePreview,
     CycleEffect,
-    SetMode(usize),
+    Reset,
+    SetMode(bool),
     FetchImage(CameraFilePath),
     DeleteImage(CameraFilePath),
 }
@@ -53,19 +54,7 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
     let effects = vec![
         "32768",
         "32769",
-        "32770",
-        "32771",
-        "32772",
-        "32773",
-        "32784",
         "32800",
-        "32801",
-        "32816",
-        "32832",
-        "32848",
-        "32849",
-        "32850",
-        "32851",
         "32864",
         "32912",
     ];
@@ -76,15 +65,23 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
         "f/6.3",
     ];
 
+
+    let focuses = vec![
+        "Automatic",
+        "Manual", // manual
+    ];
+
     let mut effect_index = 0;
 
     let image_quality = get_camera_setting(&camera, "imagequality");
     let picture_effect = get_camera_setting(&camera, "d21b");
     let aperture = get_camera_setting(&camera, "f-number");
+    let focus = get_camera_setting(&camera, "focusmode");
 
     set_camera_setting(&camera, &image_quality, "Fine");
     set_camera_setting(&camera, &picture_effect, effects[effect_index]);
     set_camera_setting(&camera, &aperture, apertures[0]);
+    set_camera_setting(&camera, &focus, "Automatic");
 
     let config = camera.config().wait().unwrap();
     println!("{:#?}", config);
@@ -109,10 +106,21 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
             }
             Some(CameraCommand::CycleEffect) => {
                 effect_index = (effect_index + 1) % effects.len();
+                println!("{}", effects[effect_index]);
                 set_camera_setting(&camera, &picture_effect, effects[effect_index]); // picture effect
             }
-            Some(CameraCommand::SetMode(index)) => {
-                set_camera_setting(&camera, &aperture, apertures[index]);
+            Some(CameraCommand::SetMode(lights_on)) => {
+                if lights_on {
+                    set_camera_setting(&camera, &focus, "Automatic");
+                } else {
+                    set_camera_setting(&camera, &focus, "Manual");
+                }
+            }
+            Some(CameraCommand::Reset) => {
+                effect_index = 0;  // it's only 4 days until the wedding I don't have time to do
+                                   // this properly ok
+                set_camera_setting(&camera, &picture_effect, effects[effect_index]);
+                set_camera_setting(&camera, &focus, "Automatic");
             }
             Some(CameraCommand::FetchImage(path)) => {
                 sleep(Duration::from_secs(1));
@@ -149,7 +157,7 @@ fn capture_image(camera: &Camera) -> Option<CameraFilePath> {
     flush_camera_events(camera)?;
     camera.trigger_capture().wait().ok()?;
 
-    let deadline = Instant::now() + Duration::from_secs(10);
+    let deadline = Instant::now() + Duration::from_secs(20);
     loop {
         let remaining = deadline.checked_duration_since(Instant::now())?;
         match camera
