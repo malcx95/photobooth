@@ -156,6 +156,7 @@ async fn main() -> Result<(), String> {
                     Some(button::ButtonPress::TakePhoto) => {
                         state = ProgramState::Countdown;
                         countdown_start = Instant::now();
+                        camera_tx.send(CameraCommand::CountdownStart).unwrap();
                         reset_timer.reset();
                     }
                     Some(button::ButtonPress::CycleEffect) => {
@@ -166,6 +167,9 @@ async fn main() -> Result<(), String> {
                         lights_on = !lights_on;
                         camera_tx.send(CameraCommand::SetMode(lights_on)).unwrap();
                         reset_timer.reset();
+                    }
+                    Some(button::ButtonPress::Accept) => {
+                        camera_tx.send(CameraCommand::Focus).unwrap();
                     }
                     Some(button::ButtonPress::Leaderboard) => {
                         if scores.len() > 0 {
@@ -379,7 +383,7 @@ fn send_ledstrip_message(port: &mut Box<dyn SerialPort>, state: &ProgramState, c
 
 fn update_enabled_buttons(buttons: &mut Vec<button::Button>, state: &ProgramState) {
     let enabled_pins = match state {
-        ProgramState::Preview => vec![button::BIG_WHITE_BUTTON, button::BLUE_BUTTON, button::WHITE_BUTTON, button::YELLOW_BUTTON],
+        ProgramState::Preview => vec![button::BIG_WHITE_BUTTON, button::BLUE_BUTTON, button::WHITE_BUTTON, button::YELLOW_BUTTON, button::GREEN_BUTTON],
         ProgramState::Countdown => vec![button::RED_BUTTON],
         ProgramState::Capturing => vec![],
         ProgramState::CaptureFailed => vec![],

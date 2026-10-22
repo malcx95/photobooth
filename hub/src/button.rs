@@ -48,7 +48,7 @@ pub fn button_text(pin: u8, state: &ProgramState) -> &'static str {
             _ => "Reject",
         }
     } else if pin == BLUE_BUTTON {
-        "Effect"
+        "Filter"
     } else if pin == WHITE_BUTTON {
         match state {
             ProgramState::Leaderboard => "Go back",
@@ -59,6 +59,7 @@ pub fn button_text(pin: u8, state: &ProgramState) -> &'static str {
     } else if pin == GREEN_BUTTON {
         match state {
             ProgramState::Leaderboard => "Next",
+            ProgramState::Preview => "Focus",
             _ => "Accept",
         }
     } else {

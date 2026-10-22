@@ -1,5 +1,6 @@
 use core::panic;
 use gphoto2::Context;
+use gphoto2::widget::ToggleWidget;
 use gphoto2::{
     camera::{Camera, CameraEvent},
     file::CameraFilePath,
@@ -14,6 +15,8 @@ use std::{
     thread::sleep,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+use crate::timer;
 
 pub enum ImageMessage {
     CameraStarted,
@@ -30,6 +33,8 @@ pub enum CameraCommand {
     CaptureImage,
     CapturePreview,
     CycleEffect,
+    Focus,
+    CountdownStart,
     Reset,
     SetMode(bool),
     FetchImage(CameraFilePath),
@@ -78,6 +83,8 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
     let aperture = get_camera_setting(&camera, "f-number");
     let focus = get_camera_setting(&camera, "focusmode");
 
+    let focustrigger = get_focus(&camera);
+
     set_camera_setting(&camera, &image_quality, "Fine");
     set_camera_setting(&camera, &picture_effect, effects[effect_index]);
     set_camera_setting(&camera, &aperture, apertures[0]);
@@ -87,7 +94,27 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
     println!("{:#?}", config);
     image_tx.send(ImageMessage::CameraStarted).unwrap();
 
+    let mut auto_focus = true;
+
+    let mut focus_timer = timer::Timer::new(1000);
+    let mut focusing = false;
+
+    let mut pending_manual = false;
+
     loop {
+
+        if focusing && focus_timer.triggered() {
+            focustrigger.set_toggled(false);
+            camera.set_config(&focustrigger).wait().unwrap();
+            focusing = false;
+        }
+
+        if pending_manual && !focusing {
+            set_camera_setting(&camera, &focus, "Manual");
+            pending_manual = false;
+            println!("Setting manual");
+        }
+
         let msg = camera_rx.recv().ok();
 
         match msg {
@@ -109,18 +136,24 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
                 println!("{}", effects[effect_index]);
                 set_camera_setting(&camera, &picture_effect, effects[effect_index]); // picture effect
             }
-            Some(CameraCommand::SetMode(lights_on)) => {
-                if lights_on {
-                    set_camera_setting(&camera, &focus, "Automatic");
-                } else {
-                    set_camera_setting(&camera, &focus, "Manual");
+            Some(CameraCommand::Focus) => {
+                focusing = true;
+                focustrigger.set_toggled(true);
+                camera.set_config(&focustrigger).wait().unwrap();
+            }
+            Some(CameraCommand::CountdownStart) => {
+                if !auto_focus {
+                    pending_manual = true;
                 }
+            }
+            Some(CameraCommand::SetMode(lights_on)) => {
+                auto_focus = lights_on;
             }
             Some(CameraCommand::Reset) => {
                 effect_index = 0;  // it's only 4 days until the wedding I don't have time to do
                                    // this properly ok
                 set_camera_setting(&camera, &picture_effect, effects[effect_index]);
-                set_camera_setting(&camera, &focus, "Automatic");
+                auto_focus = true;
             }
             Some(CameraCommand::FetchImage(path)) => {
                 sleep(Duration::from_secs(1));
@@ -128,6 +161,7 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
                     ImageMessage::FetchedImage(image, path)
                 });
                 image_tx.send(msg).unwrap();
+                set_camera_setting(&camera, &focus, "Automatic");
             }
             Some(CameraCommand::DeleteImage(path)) => {
                 camera
@@ -238,6 +272,13 @@ fn capture_download_path() -> PathBuf {
 fn get_camera_setting(camera: &Camera, key: &str) -> RadioWidget {
     camera
         .config_key::<RadioWidget>(key)
+        .wait()
+        .unwrap()
+}
+
+fn get_focus(camera: &Camera) -> ToggleWidget {
+    camera
+        .config_key::<ToggleWidget>("autofocus")
         .wait()
         .unwrap()
 }
