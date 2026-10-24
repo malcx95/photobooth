@@ -57,6 +57,8 @@ async fn main() -> Result<(), String> {
 
     let args: Vec<String> = env::args().collect();
 
+    set_fullscreen(true);
+
     let ignore_controller = args.len() > 1 && args[1] == "-f";
 
     let (image_tx, image_rx) = mpsc::channel::<camera::ImageMessage>();

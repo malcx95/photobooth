@@ -55,7 +55,7 @@ pub fn button_text(pin: u8, state: &ProgramState) -> &'static str {
             _ => "Leaderboard",
         }
     } else if pin == YELLOW_BUTTON {
-        "Exposure"
+        "Lights"
     } else if pin == GREEN_BUTTON {
         match state {
             ProgramState::Leaderboard => "Next",

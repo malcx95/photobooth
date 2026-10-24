@@ -140,6 +140,7 @@ pub fn camera_loop(image_tx: Sender<ImageMessage>, camera_rx: Receiver<CameraCom
                 focusing = true;
                 focustrigger.set_toggled(true);
                 camera.set_config(&focustrigger).wait().unwrap();
+                focus_timer.reset();
             }
             Some(CameraCommand::CountdownStart) => {
                 if !auto_focus {

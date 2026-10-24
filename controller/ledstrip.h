@@ -3,7 +3,7 @@
 #include <FastLED.h>
 #include <stdint.h>
 
-constexpr size_t NUM_LEDS = 160 * 5;
+constexpr size_t NUM_LEDS = 160 * 4;
 
 enum LEDState : uint8_t
 {
